@@ -17,10 +17,12 @@ def H_t(N_,J_,h_,BC_):
         H_[0,N_-1] = H_[N_-1,0] = -J_*2
     return H_
 
+#Real and linear quenches
 def h_t_real(t_,Tau_):
-    return -np.arctan(t_/Tau_)
+    return np.arctan(t_/Tau_)
 def h_t_linear(t_,Tau_):
     return -t_/Tau_
+h_t_dic = {'real':h_t_real, 'linear':h_t_linear}
 def J_t_real(t_,Tau_):
     sigma = Tau_*np.tan(1/2)/np.sqrt(np.log(2))
     return np.exp(-(t_/sigma)**2)
@@ -30,42 +32,47 @@ def J_t_linear(t_,Tau_):
         return np.ones(len(t_))*jj
     except:
         return jj
-
+J_t_dic = {'real':J_t_real, 'linear':J_t_linear}
 def time_span_real(Tau,steps):
-    return np.linspace(-np.tan(1)*Tau,np.tan(1)*Tau,steps,endpoint=False)
+    return np.linspace(-np.tan(1)*Tau,np.tan(1)*Tau,steps,endpoint=True)
 def time_span_linear(Tau,steps):
-    return np.linspace(-Tau,Tau,steps,endpoint=False)
-
+    return np.linspace(-Tau,Tau,steps,endpoint=True)
+time_span_dic = {'real':time_span_real, 'linear':time_span_linear}
+datadir_dic = {'real':'Real_Quench/', 'linear':'Linear_Quench'}
+#
 def compute_gap(args):
     N,dt,list_Tau,BC,type_of_quench = args
-    datadir = 'Real_Quench/' if type_of_quench == "real" else 'Linear_Quench/'
-    h_t = h_t_real if type_of_quench == "real" else h_t_linear
-    J_t = J_t_real if type_of_quench == "real" else J_t_linear
-    time_span = time_span_real if type_of_quench == "real" else time_span_linear 
+    datadir = datadir_dic[type_of_quench]
+    h_t = h_t_dic[type_of_quench]
+    J_t = J_t_dic[type_of_quench]
+    time_span = time_span_dic[type_of_quench]
+    #
     gap_ = []
     Tau = list_Tau[-1]
-    steps = int(Tau/dt)
+    total_ev_time_per_Tau = time_span(1,2)[-1]-time_span(1,2)[0]
+    steps = int(total_ev_time_per_Tau * Tau / dt)
     times = time_span(Tau,steps)
     J = J_t(times,Tau)
     h = h_t(times,Tau)
     gap = np.zeros(steps)
+    fig = plt.figure()
     for s in range(steps):
         H_0 = H_t(N,J[s],h[s],BC)
         E_0 = scipy.linalg.eigvalsh(H_0)
         gap[s] = E_0[N//2]-E_0[N//2-1]
-    fig = plt.figure()
-    plt.plot(np.linspace(-1,1,steps,endpoint=False),gap)
+    plt.plot(times,gap)
     plt.title("Gap at 0 ="+str(gap[steps//2]))
     plt.show()
     return gap
 def compute_GSE(args):
     N,dt,list_Tau,BC,type_of_quench = args
-    datadir = 'Real_Quench/' if type_of_quench == "real" else 'Linear_Quench/'
-    h_t = h_t_real if type_of_quench == "real" else h_t_linear
-    J_t = J_t_real if type_of_quench == "real" else J_t_linear
-    time_span = time_span_real if type_of_quench == "real" else time_span_linear 
+    datadir = datadir_dic[type_of_quench]
+    h_t = h_t_dic[type_of_quench]
+    J_t = J_t_dic[type_of_quench]
+    time_span = time_span_dic[type_of_quench]
     Tau = list_Tau[-1]
-    steps = int(Tau/dt)
+    total_ev_time_per_Tau = time_span(1,2)[-1]-time_span(1,2)[0]
+    steps = int(total_ev_time_per_Tau * Tau / dt)
     times = time_span(Tau,steps)
     J = J_t(times,Tau)
     h = h_t(times,Tau)
@@ -75,31 +82,31 @@ def compute_GSE(args):
         E_0 = scipy.linalg.eigvalsh(H_0)
         GSE[s] = np.sum(E_0[:N//2])
     fig = plt.figure()
-    plt.plot(np.linspace(-1,1,steps,endpoint=False),GSE)
+    plt.plot(h,GSE)
     plt.show()
-    savefile = "en_GS.txt"
-    with open(savefile, 'w') as f:
-        with redirect_stdout(f):
-            print("J\th\tGSE")
-            for s in range(steps):
-                print(str(J[s]),'\t',"{:.3f}".format(h[s]),'\t',"{:.4f}".format(GSE[s]))
+    if False:
+        savefile = "en_GS.txt"
+        with open(savefile, 'w') as f:
+            with redirect_stdout(f):
+                print("J\th\tGSE")
+                for s in range(steps):
+                    print(str(J[s]),'\t',"{:.3f}".format(h[s]),'\t',"{:.4f}".format(GSE[s]))
     return GSE
 
 def time_evolve(args):
     N,dt,list_Tau,BC,type_of_quench = args
-    datadir = 'Real_Quench/' if type_of_quench == "real" else 'Linear_Quench/'
-    h_t = h_t_real if type_of_quench == "real" else h_t_linear
-    J_t = J_t_real if type_of_quench == "real" else J_t_linear
-    time_span = time_span_real if type_of_quench == "real" else time_span_linear 
+    datadir = datadir_dic[type_of_quench]
+    h_t = h_t_dic[type_of_quench]
+    J_t = J_t_dic[type_of_quench]
+    time_span = time_span_dic[type_of_quench]
+    #
     psi_ = []
     times_ = []
+    total_ev_time_per_Tau = time_span(1,2)[-1]-time_span(1,2)[0]
     for n,Tau in enumerate(list_Tau):
         name_pars = str(N)+'_'+str(Tau)+'-'+str(dt)+'_'+BC
-        total_ev_time = 2*np.tan(1)*Tau if type_of_quench == "real" else 2*Tau
-        steps = int(total_ev_time/dt)
+        steps = int(total_ev_time_per_Tau * Tau / dt)
         times = time_span(Tau,steps)
-        J = J_t(times,Tau)
-        h = h_t(times,Tau)
         times_.append(times)
         #Time evolution
         filename = datadir+'time_evolved_wf_'+name_pars+'.npy'
@@ -108,6 +115,8 @@ def time_evolve(args):
             psi_.append(psi)
         except:
             print("Time evolution of Tau = ",Tau," ...")
+            J = J_t(times,Tau)
+            h = h_t(times,Tau)
             psi = np.zeros((steps,N,N),dtype=complex)#N//2 (last)     #steps->time, N -> number of sites,  N -> number of modes
             H_0 = H_t(N,J[0],h[0],BC)
             E_0, psi_0 = scipy.linalg.eigh(H_0)
@@ -123,19 +132,17 @@ def time_evolve(args):
 
 def compute_fidelity(args):
     N,dt,list_Tau,BC,type_of_quench = args
-    datadir = 'Real_Quench/' if type_of_quench == "real" else 'Linear_Quench/'
-    h_t = h_t_real if type_of_quench == "real" else h_t_linear
-    J_t = J_t_real if type_of_quench == "real" else J_t_linear
-    time_span = time_span_real if type_of_quench == "real" else time_span_linear 
+    datadir = datadir_dic[type_of_quench]
+    h_t = h_t_dic[type_of_quench]
+    J_t = J_t_dic[type_of_quench]
+    time_span = time_span_dic[type_of_quench]
+    #
     fid_ = []
+    total_ev_time_per_Tau = time_span(1,2)[-1]-time_span(1,2)[0]
     for n,Tau in enumerate(list_Tau):
         name_pars = str(N)+'_'+str(Tau)+'-'+str(dt)+'_'+BC
-        total_ev_time = 2*np.tan(1)*Tau if type_of_quench == "real" else 2*Tau
-        steps = int(total_ev_time/dt)
         filename = datadir+'fidelity_'+name_pars+'.npy'
-        times = time_span(Tau,steps)
-        J = J_t(times,Tau)
-        h = h_t(times,Tau)
+        #Find if already computed
         try:
             fid_.append(np.load(filename))
         except:
@@ -148,6 +155,11 @@ def compute_fidelity(args):
                 psi = psi_[n]
             #Compute fidelity
             print("Computing fidelity of Tau = ",Tau," ...")
+            steps = int(total_ev_time_per_Tau * Tau / dt)
+            times = time_span(Tau,steps)
+            J = J_t(times,Tau)
+            h = h_t(times,Tau)
+            #
             fid_.append(np.zeros(steps))
             for s in range(steps):
                 E_, evec = np.linalg.eigh(H_t(N,J[s],h[s],BC))
@@ -175,24 +187,25 @@ def compute_fidelity(args):
 
 def compute_nex(ind_T,args):
     N,dt,list_Tau,BC,type_of_quench = args
-    datadir = 'Real_Quench/' if type_of_quench == "real" else 'Linear_Quench/'
-    h_t = h_t_real if type_of_quench == "real" else h_t_linear
-    J_t = J_t_real if type_of_quench == "real" else J_t_linear
-    time_span = time_span_real if type_of_quench == "real" else time_span_linear 
+    datadir = datadir_dic[type_of_quench]
+    h_t = h_t_dic[type_of_quench]
+    J_t = J_t_dic[type_of_quench]
+    time_span = time_span_dic[type_of_quench]
+    #
     nex = []
+    total_ev_time_per_Tau = time_span(1,2)[-1]-time_span(1,2)[0]
     for n,Tau in enumerate(list_Tau):
         name_pars = str(N)+'_'+str(Tau)+'-'+str(dt)+'_'+BC
         filename = datadir+'nex_'+name_pars+'.npy'
         try:
-            nex.append(np.load(filename)/N)
+            nex.append(np.load(filename))
         except:
             print("Computing nex of Tau = ",Tau," ...")
             #Find time evolved states
             filename_psi = datadir+'time_evolved_wf_'+name_pars+'.npy'
             try:
                 psi = np.load(filename_psi)
-                total_ev_time = 2*np.tan(1)*Tau if type_of_quench == "real" else 2*Tau
-                steps = int(total_ev_time/dt)
+                steps = int(total_ev_time_per_Tau * Tau / dt)
                 times = time_span(Tau,steps)
             except:
                 times_, psi_ = time_evolve(args)
@@ -200,31 +213,72 @@ def compute_nex(ind_T,args):
                 psi = psi_[n]
             #
             ind_t = len(times)//2 if ind_T == 2 else ind_T
-            #
             res = 0
             #
             J = J_t(times[ind_t],Tau)
             h = h_t(times[ind_t],Tau)
             H_F = H_t(N,J,h,BC)
-            E_F, psi_0 = scipy.linalg.eigh(H_F)
+            E_F, psi_0 = scipy.linalg.eigh(H_F) #energy and GS of system
             for k in range(N//2,N):
                 temp_k = 0
                 for l in range(N//2):
-                    Gamma_kl = 0
-                    for i in range(N):
-                        Gamma_kl += psi_0[i,k]*np.conjugate(psi[ind_t,i,l])
+                    Gamma_kl = np.matmul(np.conjugate(psi[ind_t,:,l]).T,psi_0[:,k]).sum()
                     temp_k += np.linalg.norm(Gamma_kl)**2
                 res += temp_k
             np.save(filename,res)
-            nex.append(res/N)
+            nex.append(res)
     return nex
+
+def compute_pop_ev(args,rg):
+    N,dt,list_Tau,BC,type_of_quench = args
+    datadir = datadir_dic[type_of_quench]
+    h_t = h_t_dic[type_of_quench]
+    J_t = J_t_dic[type_of_quench]
+    time_span = time_span_dic[type_of_quench]
+    #
+    n_q = []
+    total_ev_time_per_Tau = time_span(1,2)[-1]-time_span(1,2)[0]
+    for n,Tau in enumerate(list_Tau):
+        name_pars = str(N)+'_'+str(Tau)+'-'+str(dt)+'_'+BC
+        filename = datadir+'n_q_'+name_pars+'.npy'
+        try:
+            n_q.append(np.load(filename))
+        except:
+            print("Computing n_q of Tau = ",Tau," ...")
+            steps = int(total_ev_time_per_Tau * Tau / dt)
+            #Find time evolved states
+            filename_psi = datadir+'time_evolved_wf_'+name_pars+'.npy'
+            try:
+                psi = np.load(filename_psi)
+                times = time_span(Tau,steps)
+            except:
+                times_, psi_ = time_evolve(args)
+                times = times_[n]
+                psi = psi_[n]
+            #
+            J = J_t(times,Tau)
+            h = h_t(times,Tau)
+            res = np.zeros((N,steps))
+            for s in range(steps):
+                H_F = H_t(N,J[s],h[s],BC)
+                E_F, psi_0 = scipy.linalg.eigh(H_F) #energy and GS of system
+                for k in range(N//2-rg,N//2+rg):
+                    temp_k = 0
+                    for l in range(N//2):
+                        Gamma_kl = np.matmul(np.conjugate(psi[s,:,l]).T,psi_0[:,k]).sum()
+                        temp_k += np.linalg.norm(Gamma_kl)**2
+                    res[k,s] = temp_k
+            np.save(filename,res)
+            n_q.append(res)
+    return n_q
 
 def compute_Enex(args):
     N,dt,list_Tau,BC,type_of_quench = args
-    datadir = 'Real_Quench/' if type_of_quench == "real" else 'Linear_Quench/'
-    h_t = h_t_real if type_of_quench == "real" else h_t_linear
-    J_t = J_t_real if type_of_quench == "real" else J_t_linear
-    time_span = time_span_real if type_of_quench == "real" else time_span_linear 
+    datadir = datadir_dic[type_of_quench]
+    h_t = h_t_dic[type_of_quench]
+    J_t = J_t_dic[type_of_quench]
+    time_span = time_span_dic[type_of_quench]
+    #
     Enex = []
     for n,Tau in enumerate(list_Tau):
         name_pars = str(N)+'_'+str(Tau)+'-'+str(dt)+'_'+BC
@@ -280,10 +334,11 @@ def compute_Enex(args):
 
 def compute_CF(ind_T,args,wf):
     N,dt,list_Tau,BC,type_of_quench = args
-    datadir = 'Real_Quench/' if type_of_quench == "real" else 'Linear_Quench/'
-    h_t = h_t_real if type_of_quench == "real" else h_t_linear
-    J_t = J_t_real if type_of_quench == "real" else J_t_linear
-    time_span = time_span_real if type_of_quench == "real" else time_span_linear
+    datadir = datadir_dic[type_of_quench]
+    h_t = h_t_dic[type_of_quench]
+    J_t = J_t_dic[type_of_quench]
+    time_span = time_span_dic[type_of_quench]
+    #
     CF = []
     i_bnd = 5
     if wf=="t-ev":

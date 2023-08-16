@@ -38,12 +38,15 @@ try:
     #
     compute_fid = 1
     compute_nex = 1
+    compute_pop_ev = 1
     compute_Enex = 0
     compute_S = 0
     compute_CL = 0
     CL_add = 1 if compute_CL else 0
     tot_figs = compute_fid + compute_nex + compute_Enex + compute_S + compute_CL
-    list_dims = [(1,1+CL_add), (1+CL_add,2), (2,2), (2,2)]
+    if compute_pop_ev:
+        tot_figs += len(list_Tau)
+    list_dims = [(1,1+CL_add), (1+CL_add,2), (2,2), (2,2), (2,3), (2,3), (3,3), (3,3), (3,3)]
     fig_x,fig_y = list_dims[tot_figs-1]
     s_ = 20         #text size
 except:
@@ -62,18 +65,18 @@ if type_of_quench not in ["linear","real"]:
     print("errorrr")
     exit()
 args = (N, dt, list_Tau, BC, type_of_quench)
-h_t = fs.h_t_real if type_of_quench == "real" else fs.h_t_linear
-J_t = fs.J_t_real if type_of_quench == "real" else fs.J_t_linear
-time_span = fs.time_span_real if type_of_quench == "real" else fs.time_span_linear 
+h_t = fs.h_t_dic[type_of_quench]
+J_t = fs.J_t_dic[type_of_quench]
+time_span = fs.time_span_dic[type_of_quench]
 print("Arguments: ",*args)
 #
-#fs.compute_GSE(args)
+#fs.compute_gap(args)
 #exit()
 #Time evolution
 times_, psi_ = fs.time_evolve(args)
 #
 fig = plt.figure(figsize=(16,8))
-E_ = np.linalg.eigvalsh(fs.H_t(N,J_t(0,1),h_t(0,1),BC))   #energies of H at time 0.
+E_ = np.linalg.eigvalsh(fs.H_t(N,J_t(0,1),h_t(0,1),BC))   #energies of H at time 0 -> gapless point.
 Gap = E_[N//2]-E_[N//2-1]
 cols = ['r','g','y','b','k','m','orange','forestgreen']
 plt.suptitle(r'$N=$'+str(N)+', time-step='+str(dt)+', Gap='+'{:5.4f}'.format(Gap),size=s_+10)
@@ -85,15 +88,15 @@ if compute_fid:
     #
     ax1 = fig.add_subplot(fig_x,fig_y,n_fig) 
     for i in range(len(list_Tau)):
-        X = np.linspace(-1,1,len(times_[i]),endpoint=False)
-#        plt.plot(X,fid[i],color=cols[i%len(cols)],label=r'$\tau$='+str(list_Tau[i]))
-        ax1.plot(X,fid[i],color=cols[i%len(cols)],label=r'$\tau$='+str(list_Tau[i]))
-        #plt.vlines(-(list_Tau[i])**(-1/2),0,1,color=cols[i%len(cols)])
-    ax1.set_ylabel('Fidelity',size=s_)
-    ax1.set_xlabel(r'$h(t)$')#=-tg^{-1}(t/\tau),\quad J=exp(-(t/\sigma)^2)$',size=s_)
+        Tau = list_Tau[i]
+        ax1.plot(h_t(times_[i],Tau),fid[i],color=cols[i%len(cols)],label=r'$\tau$='+str(list_Tau[i]))
+    ax1.set_ylabel(r'$|\langle\psi_{GS}|\psi(t)\rangle|^2$',size=s_)
+    ax1.set_xlabel(r'$h_z$',size=s_)
     #Inset
-    Y_ax2 = [0,0,0.5,0.5]
-    ax2 = plt.axes([0,Y_ax2[tot_figs-1],0.5,0.5])
+#    Y_ax2 = [0,0,0.5,0.5,0.3,0.3,0.3]
+#    ax2 = plt.axes([0,Y_ax2[tot_figs-1],0.5,0.5])
+    coord = ax1.get_position().get_points()
+    ax2 = plt.axes([coord[0,0],coord[0,1],0.5,0.5])
     ip = InsetPosition(ax1, [0.1,0.1,0.25,0.25])
     ax2.set_axes_locator(ip)
 #    mark_inset(ax1, ax2, loc1=2, loc2=4, fc="none", ec='0.5')
@@ -104,7 +107,7 @@ if compute_fid:
     ax2.vlines(0,-1,1,color='k',alpha=0.3)
     ax2.set_xticks([times_inset[0],0,times_inset[-1]],["$t_i$","$0$","$t_f$"])
     ax2.set_yticks([-1,0,1/2,1],["-1","0","1/2","1"])
-    ax2.legend(loc='lower left')
+#    ax2.legend(loc='lower left')
     #
     ax1.legend(loc='upper right')
 
@@ -113,13 +116,11 @@ if compute_nex:
     #Fit nex
     ind_T = -1
     nex = fs.compute_nex(ind_T,args)
-    print(list_Tau,nex)
     plt.subplot(fig_x,fig_y,n_fig)
     list_Tau = np.array(list_Tau,dtype=float)
     fun = fs.pow_law
     try:
         popt, pcov = curve_fit(fun,list_Tau,nex,p0=[1,-0.5])
-        print(popt)
         X = np.linspace(list_Tau[0],list_Tau[-1],100)
         plt.plot(X,fun(X,*popt))
         plt.text(list_Tau[len(list_Tau)//2],nex[0]*3/4,'exponent='+"{:3.4f}".format(popt[1]),size=s_)
@@ -131,14 +132,28 @@ if compute_nex:
     plt.ylabel(r'$n_{ex}$',size=s_)
     plt.xlabel(r'$\tau_Q$',size=s_)
 
+if compute_pop_ev:
+    #Fit nex
+    rg = 3 #number of modes from center --> all modes are N//2
+    n_q = fs.compute_pop_ev(args,rg)
+    list_Tau = np.array(list_Tau,dtype=float)
+    for i in range(len(list_Tau)):
+        Tau = list_Tau[i]
+        n_fig += 1
+        plt.subplot(fig_x,fig_y,n_fig)
+        plt.text(-0.7,0.1,r'$\tau=$'+str(int(Tau)),size=s_)
+        plt.ylabel(r'$n_q$',size=s_)
+        plt.xlabel(r'$h_z$',size=s_)
+        for k in range(N//2-rg,N//2+rg):
+            plt.plot(h_t(times_[i],Tau),n_q[i][k,:],'-',label=str(k))
+        plt.legend()
+
 if compute_Enex:    #compute energy density
     n_fig += 1
     #Fit nex
     Enex = fs.compute_Enex(args)
     plt.subplot(fig_x,fig_y,n_fig)
     list_Tau = np.array(list_Tau,dtype=float)
-    time_span = fs.time_span_real if type_of_quench == "real" else fs.time_span_linear 
-    h_t = fs.h_t_real if type_of_quench == "real" else fs.h_t_linear
     for i in range(len(list_Tau)):
         Tau = list_Tau[i]
         total_ev_time = 2*np.tan(1)*Tau if type_of_quench == "real" else 2*Tau
@@ -148,7 +163,7 @@ if compute_Enex:    #compute energy density
         plt.plot(h,Enex[i],'-',color=cols[i%len(cols)])
     plt.gca().invert_xaxis()
     plt.ylabel(r'$E_{ex}$',size=s_)
-    plt.xlabel(r'$h$',size=s_)
+    plt.xlabel(r'$h_z$',size=s_)
 
 if compute_S:
     n_fig += 1
