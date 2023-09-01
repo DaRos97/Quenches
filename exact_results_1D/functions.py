@@ -193,6 +193,7 @@ def compute_nex(ind_T,args):
     time_span = time_span_dic[type_of_quench]
     #
     nex = []
+#    n_q = []
     total_ev_time_per_Tau = time_span(1,2)[-1]-time_span(1,2)[0]
     for n,Tau in enumerate(list_Tau):
         name_pars = str(N)+'_'+str(Tau)+'-'+str(dt)+'_'+BC
@@ -219,15 +220,63 @@ def compute_nex(ind_T,args):
             h = h_t(times[ind_t],Tau)
             H_F = H_t(N,J,h,BC)
             E_F, psi_0 = scipy.linalg.eigh(H_F) #energy and GS of system
+#            nnn = np.zeros(N//2)
             for k in range(N//2,N):
                 temp_k = 0
                 for l in range(N//2):
                     Gamma_kl = np.matmul(np.conjugate(psi[ind_t,:,l]).T,psi_0[:,k]).sum()
                     temp_k += np.linalg.norm(Gamma_kl)**2
+#                nnn[k-N//2] = temp_k
                 res += temp_k
             np.save(filename,res)
             nex.append(res)
-    return nex
+#            n_q.append(nnn)
+    return nex#,n_q
+
+def compute_en_CP(args):
+    N,dt,list_Tau,BC,type_of_quench = args
+    datadir = datadir_dic[type_of_quench]
+    h_t = h_t_dic[type_of_quench]
+    J_t = J_t_dic[type_of_quench]
+    time_span = time_span_dic[type_of_quench]
+    #
+    en_CP = np.zeros((len(list_Tau),2))
+    total_ev_time_per_Tau = time_span(1,2)[-1]-time_span(1,2)[0]
+    for n,Tau in enumerate(list_Tau):
+        name_pars = str(N)+'_'+str(Tau)+'-'+str(dt)+'_'+BC
+        filename = datadir+'en_CP_'+name_pars+'.npy'
+        try:
+            en_CP.append(np.load(filename))
+        except:
+            print("Computing en_CP of Tau = ",Tau," ...")
+            steps = int(total_ev_time_per_Tau * Tau / dt)
+            #Find time evolved states
+            filename_psi = datadir+'time_evolved_wf_'+name_pars+'.npy'
+            try:
+                psi = np.load(filename_psi)
+                times = time_span(Tau,steps)
+            except:
+                times_, psi_ = time_evolve(args)
+                times = times_[n]
+                psi = psi_[n]
+            #
+            t_ = [steps//2,-1]     #time of critical point
+            en_Tau = np.array([0,0])
+            for i,t_CP in enumerate(t_):
+                J = J_t(times,Tau)[t_CP]
+                h = h_t(times,Tau)[t_CP]
+                Ham = H_t(N,J,h,BC)
+                eigs_GS, psi_GS = scipy.linalg.eigh(Ham)
+                En_GS = sum(eigs_GS[:N//2])     #Energy of GS
+                En_psi = 0 
+                for k in range(N):
+                    temp_k = 0
+                    for l in range(N//2):
+                        Gamma_kl = np.matmul(np.conjugate(psi[t_CP,:,l]).T,psi_GS[:,k]).sum()
+                        temp_k += np.linalg.norm(Gamma_kl)**2
+                    En_psi += temp_k*eigs_GS[k]
+                en_CP[n,i] = abs((En_psi-En_GS)/En_GS)
+    return en_CP
 
 def compute_pop_ev(args,rg):
     N,dt,list_Tau,BC,type_of_quench = args
@@ -272,6 +321,50 @@ def compute_pop_ev(args,rg):
             n_q.append(res)
     return n_q
 
+def compute_pop_T(args):
+    N,dt,list_Tau,BC,type_of_quench = args
+    datadir = datadir_dic[type_of_quench]
+    h_t = h_t_dic[type_of_quench]
+    J_t = J_t_dic[type_of_quench]
+    time_span = time_span_dic[type_of_quench]
+    #
+    n_q = []
+    total_ev_time_per_Tau = time_span(1,2)[-1]-time_span(1,2)[0]
+    for n,Tau in enumerate(list_Tau):
+        name_pars = str(N)+'_'+str(Tau)+'-'+str(dt)+'_'+BC
+        filename = datadir+'n_qt_'+name_pars+'.npy'
+        try:
+            n_q.append(np.load(filename))
+        except:
+            print("Computing n_qt of Tau = ",Tau," ...")
+            steps = int(total_ev_time_per_Tau * Tau / dt)
+            #Find time evolved states
+            filename_psi = datadir+'time_evolved_wf_'+name_pars+'.npy'
+            try:
+                psi = np.load(filename_psi)
+                times = time_span(Tau,steps)
+            except:
+                times_, psi_ = time_evolve(args)
+                times = times_[n]
+                psi = psi_[n]
+            #
+            J = J_t(times,Tau)
+            h = h_t(times,Tau)
+            list_t = [steps//2,steps-1]
+            res = np.zeros((N,len(list_t)))
+            for i,s in enumerate(list_t):
+                H_F = H_t(N,J[s],h[s],BC)
+                E_F, psi_0 = scipy.linalg.eigh(H_F) #energy and GS of system
+                for k in range(N):
+                    temp_k = 0
+                    for l in range(N//2):
+                        Gamma_kl = np.matmul(np.conjugate(psi[s,:,l]).T,psi_0[:,k]).sum()
+                        temp_k += np.linalg.norm(Gamma_kl)**2
+                    res[k,i] = temp_k
+            np.save(filename,res)
+            n_q.append(res)
+    return n_q
+
 def compute_Enex(args):
     N,dt,list_Tau,BC,type_of_quench = args
     datadir = datadir_dic[type_of_quench]
@@ -280,6 +373,7 @@ def compute_Enex(args):
     time_span = time_span_dic[type_of_quench]
     #
     Enex = []
+    total_ev_time_per_Tau = time_span(1,2)[-1]-time_span(1,2)[0]
     for n,Tau in enumerate(list_Tau):
         name_pars = str(N)+'_'+str(Tau)+'-'+str(dt)+'_'+BC
         filename = datadir+'Enex_'+name_pars+'.npy'
@@ -289,8 +383,7 @@ def compute_Enex(args):
             print("Computing Enex of Tau = ",Tau," ...")
             #Find time evolved states
             filename_psi = datadir+'time_evolved_wf_'+name_pars+'.npy'
-            total_ev_time = 2*np.tan(1)*Tau if type_of_quench == "real" else 2*Tau
-            steps = int(total_ev_time/dt)
+            steps = int(total_ev_time_per_Tau * Tau / dt)
             try:
                 psi = np.load(filename_psi)
             except:
@@ -340,7 +433,7 @@ def compute_CF(ind_T,args,wf):
     time_span = time_span_dic[type_of_quench]
     #
     CF = []
-    i_bnd = 5
+    total_ev_time_per_Tau = time_span(1,2)[-1]-time_span(1,2)[0]
     if wf=="t-ev":
         print("Using time-evolved wf at time ",ind_T)
     else:
@@ -352,8 +445,7 @@ def compute_CF(ind_T,args,wf):
             CF.append(np.load(filename))
         except:
             print("Computing Corr. fun. of Tau = ",Tau," ...")
-            total_ev_time = 2*np.tan(1)*Tau if type_of_quench == "real" else 2*Tau
-            steps = int(total_ev_time/dt)
+            steps = int(total_ev_time_per_Tau * Tau / dt)
             #Find time evolved states
             filename_psi = datadir+'time_evolved_wf_'+name_pars+'.npy'
             try:
@@ -365,12 +457,35 @@ def compute_CF(ind_T,args,wf):
                 times = times_[n]
             #
             ind_t = steps//2 if ind_T == 2 else ind_T
+            J = J_t(times,Tau)
+            h = h_t(times,Tau)
             if wf=="t-ev":
                 psi_t = psi[ind_t]
             else:
-                J,h = (J_t(times[ind_t],Tau),h_t(times[ind_t],Tau))
-                E,evec = np.linalg.eigh(H_t(N,J,h,BC))
+                E,evec = np.linalg.eigh(H_t(N,J[ind_t],h[ind_t],BC))
                 psi_t = evec
+            #Test
+            CF.append(np.zeros(N))
+            for r in range(N):
+                Gr = 0
+                Nr = 0
+                for i in range(N):
+                    if r+i >= N:
+                        continue
+                    Nr += 1
+                    temp_i = 0
+                    for s in range(N//2):
+                        temp_i += psi_t[s,i]*np.conjugate(psi_t[s,i+r])
+                    Gr += temp_i*np.conjugate(temp_i)
+                Gr /= Nr
+                CF[-1][r] = np.real(Gr)
+    return CF
+#old CF
+def aaaa():
+    if 0:
+        if 0:
+            exit()
+            #End Test
             CF.append(np.zeros((3,N)))
             for r in range(N):
                 Norm_r = 0
