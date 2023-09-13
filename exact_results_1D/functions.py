@@ -106,6 +106,7 @@ def time_evolve(args):
     for n,Tau in enumerate(list_Tau):
         name_pars = str(N)+'_'+str(Tau)+'-'+str(dt)+'_'+BC
         steps = int(total_ev_time_per_Tau * Tau / dt)
+        steps = steps+1 if steps%2==0 else steps
         times = time_span(Tau,steps)
         times_.append(times)
         #Time evolution
@@ -121,7 +122,7 @@ def time_evolve(args):
             H_0 = H_t(N,J[0],h[0],BC)
             E_0, psi_0 = scipy.linalg.eigh(H_0)
             psi[0] = psi_0[:,:N]            #N//2
-            for s in range(1,steps):
+            for s in tqdm(range(1,steps)):
                 H_temp = -1j*H_t(N,J[s],h[s],BC)*dt
                 exp_H = expm(H_temp)
                 for m in range(N):  #N//2
@@ -156,6 +157,7 @@ def compute_fidelity(args):
             #Compute fidelity
             print("Computing fidelity of Tau = ",Tau," ...")
             steps = int(total_ev_time_per_Tau * Tau / dt)
+            steps = steps+1 if steps%2==0 else steps
             times = time_span(Tau,steps)
             J = J_t(times,Tau)
             h = h_t(times,Tau)
@@ -207,6 +209,7 @@ def compute_nex(ind_T,args):
             try:
                 psi = np.load(filename_psi)
                 steps = int(total_ev_time_per_Tau * Tau / dt)
+                steps = steps+1 if steps%2==0 else steps
                 times = time_span(Tau,steps)
             except:
                 times_, psi_ = time_evolve(args)
@@ -250,6 +253,7 @@ def compute_en_CP(args):
         except:
             print("Computing en_CP of Tau = ",Tau," ...")
             steps = int(total_ev_time_per_Tau * Tau / dt)
+            steps = steps+1 if steps%2==0 else steps
             #Find time evolved states
             filename_psi = datadir+'time_evolved_wf_'+name_pars+'.npy'
             try:
@@ -295,6 +299,7 @@ def compute_pop_ev(args,rg):
         except:
             print("Computing n_q of Tau = ",Tau," ...")
             steps = int(total_ev_time_per_Tau * Tau / dt)
+            steps = steps+1 if steps%2==0 else steps
             #Find time evolved states
             filename_psi = datadir+'time_evolved_wf_'+name_pars+'.npy'
             try:
@@ -338,6 +343,7 @@ def compute_pop_T(args):
         except:
             print("Computing n_qt of Tau = ",Tau," ...")
             steps = int(total_ev_time_per_Tau * Tau / dt)
+            steps = steps+1 if steps%2==0 else steps
             #Find time evolved states
             filename_psi = datadir+'time_evolved_wf_'+name_pars+'.npy'
             try:
@@ -384,6 +390,7 @@ def compute_Enex(args):
             #Find time evolved states
             filename_psi = datadir+'time_evolved_wf_'+name_pars+'.npy'
             steps = int(total_ev_time_per_Tau * Tau / dt)
+            steps = steps+1 if steps%2==0 else steps
             try:
                 psi = np.load(filename_psi)
             except:
@@ -425,7 +432,7 @@ def compute_Enex(args):
                         print(str(J[s]),'\t',"{:.3f}".format(h[s]),'\t',"{:.4f}".format(Enex[n][s]))
     return Enex
 
-def compute_CF(ind_T,args,wf):
+def compute_CF_zz(ind_T,args,wf,out):
     N,dt,list_Tau,BC,type_of_quench = args
     datadir = datadir_dic[type_of_quench]
     h_t = h_t_dic[type_of_quench]
@@ -446,6 +453,7 @@ def compute_CF(ind_T,args,wf):
         except:
             print("Computing Corr. fun. of Tau = ",Tau," ...")
             steps = int(total_ev_time_per_Tau * Tau / dt)
+            steps = steps+1 if steps%2==0 else steps
             #Find time evolved states
             filename_psi = datadir+'time_evolved_wf_'+name_pars+'.npy'
             try:
@@ -456,7 +464,7 @@ def compute_CF(ind_T,args,wf):
                 psi = psi_[n]
                 times = times_[n]
             #
-            ind_t = steps//2 if ind_T == 2 else ind_T
+            ind_t = int(steps//2) if ind_T == 2 else int(ind_T)
             J = J_t(times,Tau)
             h = h_t(times,Tau)
             if wf=="t-ev":
@@ -469,78 +477,92 @@ def compute_CF(ind_T,args,wf):
             for r in range(N):
                 Gr = 0
                 Nr = 0
-                for i in range(N):
-                    if r+i >= N:
+                for i in range(out,N-out):
+                    if r+i >= N-out:
                         continue
                     Nr += 1
                     temp_i = 0
                     for s in range(N//2):
-                        temp_i += psi_t[s,i]*np.conjugate(psi_t[s,i+r])
+                        temp_i += psi_t[i,s]*np.conjugate(psi_t[i+r,s])
                     Gr += temp_i*np.conjugate(temp_i)
-                Gr /= Nr
-                CF[-1][r] = np.real(Gr)
-    return CF
-#old CF
-def aaaa():
-    if 0:
-        if 0:
-            exit()
-            #End Test
-            CF.append(np.zeros((3,N)))
-            for r in range(N):
-                Norm_r = 0
-                G_riz = 0
-                for i in range(i_bnd,N-i_bnd):
-                    if i+r>=N-i_bnd:
-                        continue
-                    Norm_r += 1
-                    G_riz += corr_fun_z(i,i+r,psi_t)
-                if Norm_r:
-                    CF[n][2,r] = np.abs(G_riz/Norm_r)
-#            np.save(filename,CF[-1])
+                if Nr:
+                    Gr /= Nr
+                    CF[-1][r] = np.real(Gr) if np.real(Gr) > 1e-15 else np.nan
     return CF
 
-#############################################################################
-def corr_fun(i,j,psi):          #Correlation function <c^\dagger_i c_j>
-    temp = 0
-    N = psi.shape[0]
-    for l in range(N//2):
-        temp += psi[i,l]*np.conjugate(psi[j,l])
-    return temp
-#############################################################################
-def corr_fun_x(i,j,psi):
-    G = np.zeros((j-1-i,j-1-i))
-    for row in range(j-1-i):
-        for col in range(j-1-i):
-            x = i + row
-            y = i + 1 + col
-            G[row,col] = G_ij(x,y,psi)
-    return np.linalg.det(G)/4
-def corr_fun_y(i,j,psi):
-    G = np.zeros((j-1-i,j-1-i))
-    for row in range(j-1-i):
-        for col in range(j-1-i):
-            x = i + 1 + row
-            y = i + col
-            G[row,col] = G_ij(x,y,psi)
-    return np.linalg.det(G)/4
-def corr_fun_z(i,j,Psi):
-#    return G_ij(i,i,Psi)*G_ij(j,j,Psi) - G_ij(i,j,Psi)*G_ij(j,i,Psi) - np.real((2*corr_fun(i,i,Psi)-1)*(2*corr_fun(j,j,Psi)-1))
-#    return G_ij(i,j,Psi)*G_ij(j,i,Psi)
-    return -4*np.linalg.norm(corr_fun(i,j,Psi))**2
-def G_ij(i,j,psi_temp):
-    temp = 0
-    N = psi_temp.shape[0]
-    for l in range(N//2):
-        temp += psi_temp[i,l]*np.conjugate(psi_temp[j,l])
-    d = 1 if i==j else 0
-    return 2*np.real(temp) - d
-def A_iA_j(i,j,psi):
-    temp = 0
-    N = psi.shape[0]
-    for l in range(N//2):
-        temp += psi[i,l]*np.conjugate(psi[j,l])
-    return 2*np.imag(temp)
+def compute_CF_pm(ind_T,args,wf,out):
+    N,dt,list_Tau,BC,type_of_quench = args
+    datadir = datadir_dic[type_of_quench]
+    h_t = h_t_dic[type_of_quench]
+    J_t = J_t_dic[type_of_quench]
+    time_span = time_span_dic[type_of_quench]
+    #
+    CF = []
+    total_ev_time_per_Tau = time_span(1,2)[-1]-time_span(1,2)[0]
+    if wf=="t-ev":
+        print("Using time-evolved wf at time ",ind_T)
+    else:
+        print("Using istantaneous GS at time ",ind_T)
+    for n,Tau in enumerate(list_Tau):
+        name_pars = str(N)+'_'+str(Tau)+'-'+str(dt)+'_'+BC
+        filename = datadir+'CF_'+name_pars+'.npy'
+        try:
+            CF.append(np.load(filename))
+        except:
+            print("Computing Corr. fun. of Tau = ",Tau," ...")
+            steps = int(total_ev_time_per_Tau * Tau / dt)
+            steps = steps+1 if steps%2==0 else steps
+            #Find time evolved states
+            filename_psi = datadir+'time_evolved_wf_'+name_pars+'.npy'
+            try:
+                psi = np.load(filename_psi)
+                times = time_span(Tau,steps)
+            except:
+                times_, psi_ = time_evolve(args)
+                psi = psi_[n]
+                times = times_[n]
+            #
+            ind_t = int(steps//2) if ind_T == 2 else int(ind_T)
+            J = J_t(times,Tau)
+            h = h_t(times,Tau)
+            if wf=="t-ev":
+                psi_t = psi[ind_t]
+            else:
+                E,evec = np.linalg.eigh(H_t(N,J[ind_t],h[ind_t],BC))
+                psi_t = evec
+            #Test
+            CF.append(np.zeros(N))
+            #
+            def G_ij(wf,i_,j_,N_):
+                res = 0
+                for s in range(N_//2):
+                    res += wf[i_,s]*np.conjugate(wf[j_,s]) #<c^dag_i c_j>
+                for s in range(N_//2):
+                    res += wf[j_,s]*np.conjugate(wf[i_,s]) #<c^dag_j c_i>
+                return res/2
+            #
+            big_G = np.zeros((N,N),dtype=complex)
+            for i in range(N):
+                for j in range(N):
+                    big_G[i,j] = G_ij(psi_t,i,j,N)
+            for r in range(1,N):
+                rho_xx = 0
+                rho_yy = 0
+                Nr = 0
+                for i in range(out,N-out):
+                    if r+i >= N-out:
+                        continue
+                    Nr += 1
+                    mat_xx = big_G[i:i+r-1,i+1:i+r]
+                    mat_yy = big_G[i+1:i+r,i:i+r-1]
+                    rho_xx += np.linalg.det(mat_xx)/4
+                    rho_yy += np.linalg.det(mat_yy)/4
+                if Nr:
+                    rho_xx /= Nr
+                    rho_yy /= Nr
+                    res = rho_xx#rho_xx+rho_yy
+                    CF[-1][r] = np.real(res) if np.real(res) > 1e-15 else np.nan
+    return CF
 
 def pow_law(x,a,b):
     return a*np.abs(x)**(b)

@@ -10,7 +10,7 @@ argv = sys.argv[1:]
 try:
     opts, args = getopt.getopt(argv, "N:",["type=","dt=","PBC"])
     N = 20
-    dt = 0.01
+    dt = 0.1
     list_Tau = [
             0.05,
             0.1,
@@ -55,6 +55,7 @@ try:
 #            800,
 #            2000
             ]
+    list_Tau = [5,10,20,100]#,200]
     BC = "open"
     type_of_quench = "real" #as opposed to linear
     #
@@ -64,14 +65,14 @@ try:
     compute_pop_ev = 0
     compute_pop_T = 0
     compute_Enex = 0
-    compute_en_CP = 1
+    compute_en_CP = 0
     compute_S = 0
-    compute_CL = 0
-    CL_add = 1 if compute_CL else 0
-    tot_figs = 3*compute_pop_T + compute_en_CP + compute_fid + compute_nex + compute_Enex + compute_S + compute_CL
+    compute_CF_zz = 0
+    compute_CF_pm = 1
+    tot_figs = 3*compute_pop_T + compute_en_CP + compute_fid + compute_nex + compute_Enex + compute_S + compute_CF_zz + compute_CF_pm
     if compute_pop_ev:
         tot_figs += len(list_Tau)
-    list_dims = [(1,1+CL_add), (1+CL_add,2), (2,2), (2,2), (2,3), (2,3), (3,3), (3,3), (3,3)]
+    list_dims = [(1,1), (1,2), (2,2), (2,2), (2,3), (2,3), (3,3), (3,3), (3,3)]
     fig_x,fig_y = list_dims[tot_figs-1]
     s_ = 20         #text size
 except:
@@ -114,10 +115,11 @@ print("Arguments: ",*args)
 times_, psi_ = fs.time_evolve(args)
 #
 fig = plt.figure(figsize=(16,8))
+plt.axis('off')
 E_ = np.linalg.eigvalsh(fs.H_t(N,J_t(0,1),h_t(0,1),BC))   #energies of H at time 0 -> gapless point.
 Gap = E_[N//2]-E_[N//2-1]
 cols = ['r','g','y','b','k','m','orange','forestgreen']
-#plt.suptitle(r'$N=$'+str(N)+', time-step='+str(dt)+', Gap='+'{:5.4f}'.format(Gap),size=s_+10)
+plt.suptitle(r'$N=$'+str(N)+', time-step='+str(dt),size=s_+10)#+', Gap='+'{:5.4f}'.format(Gap),size=s_+10)
 n_fig = 0
 if compute_fid:
     n_fig += 1
@@ -261,79 +263,66 @@ if compute_S:
         plt.plot(X,S[n][n_in:N:Step],color=cols[n%len(cols)])
 
 
-if compute_CL:
-    ind_T = -1                  #-1 is final time at end of quench
-    CF = fs.compute_CF(ind_T,args,"t-ev")
-    CF_gs = fs.compute_CF(ind_T,args,"gs")
+if compute_CF_zz:
+    ind_T = 2                  #-1 is final time ait end of quench
+    t_text = r"$t_{CP}$" if ind_T==2 else r"$t_f$"
+    out = 5             #removed sites at borders of the chain
+#    wf = "gs"
+    wf = "t-ev"
+    CF = fs.compute_CF_zz(ind_T,args,wf,out)
     #
-    in_ = 1
-    end_ = 3*N//4
+    in_ = 1         #first distance plotted
+    end_ = 2*out#11#N//6     #removed distances from end
+    step = 2        #1--> all distances, 2--> only even/odd distances
+    #
+    n_fig += 1
+    ax = fig.add_subplot(fig_x,fig_y,n_fig) 
     for n,Tau in enumerate(list_Tau):
-        n_fig += 1
-        plt.subplot(fig_x,fig_y,n_fig+n)
-        plt.title(r"$\tau_Q=$"+str(Tau))
-        plt.plot(np.arange(in_,N-end_),CF[n][in_:N-end_],'r')
-        plt.plot(np.arange(in_,N-end_),CF_gs[n][in_:N-end_],'b')
-        plt.yscale('log')
-        plt.ylabel("$CF(r)$",size=s_)
-        if n:
-            plt.xlabel('r',size=s_)
-    plt.show()
-    exit()
-    #
-    #
-    fit_CL = []
-    fit_CL_gs = []
-    #Plot CF
-    plt.subplot(fig_x,fig_y,n_fig)
-    for n,Tau in enumerate(list_Tau):
-        n_init = 1
-        n_final = 12#N-10
-        if sub_lat:
-            X_fit = np.arange(n_init,n_final,2)
-            CFz = CF[n][2,n_init:n_final:2]
-#            CFz_gs = CF_gs[n][2,n_init:n_final:2]
-        else:
-            X_fit = np.arange(n_init,n_final)
-            CFz = CF[n][2,n_init:n_final]
-#            CFz_gs = CF_gs[n][2,n_init:n_final]
-        #Compute fit and extract CL
-        X = np.linspace(X_fit[0],X_fit[-1],100)
-        plt.plot(X_fit,CFz,'*',color=cols[n%len(cols)],label='zz-t')
-#        plt.plot(X_fit,CFz_gs,'^',color=cols[n%len(cols)],label='zz-GS')
-        fun = fs.exp_dec
-#        try:
-#            popt, pcov = curve_fit(fun,X_fit,CFz_gs,p0=[CFz_gs[0],1])
-#            fit_CL_gs.append(popt[1])
-#            plt.plot(X,fs.exp_dec(X,*popt),'-',color=cols[n%len(cols)],label = 'fit gs')
-#        except:
-#            fit_CL.append(0)
-#            print("aaa")
-        try:
-            popt, pcov = curve_fit(fun,X_fit,CFz,p0=[CFz_gs[0],1])
-            fit_CL.append(popt[1])
-#            plt.plot(X,fs.exp_dec(X,*popt),'-',color=cols[n%len(cols)],label = 'fit t-ev')
-        except:
-            fit_CL.append(0)
-            print("aaa")
-    plt.xticks(X_fit)
+        ax.plot(np.arange(in_,N-end_,step),CF[n][in_:N-end_:step],'*',label=r"$\tau_Q=$"+str(Tau),color=cols[n%len(cols)])
+    ax.set_yscale('log')
+    ax.set_xscale('log')
+    ax.set_ylabel("$G(r)$",size=s_)
+    ax.set_xlabel("$r$",size=s_)
+    try:
+        popt,pcov = curve_fit(fs.pow_law,np.arange(in_,N-end_,step),CF[-1][in_:N-end_:step],p0=[1,-2])
+        ax.plot(np.linspace(in_,N-end_,1000),pow_law(np.linspace(in_,N-end_,1000),*popt),'k-',label='a='+"{:.4f}".format(popt[1]))
+    except:
+        print("Error in fitting")
+    ax.text(1,1e-6,wf+" wavefunction, t="+t_text,size=s_)
     plt.legend()
-    plt.yscale('log')
-    plt.ylabel("Correlation Function",size=s_)
-    plt.xlabel(r"$r$",size=s_)
-    print(fit_CL)
-    plt.show()
-    exit()
-    #Plot CL
-    plt.subplot(fig_x,fig_y,n_fig+1)
+
+if compute_CF_pm:
+    ind_T = 2                  #-1 is final time ait end of quench
+    t_text = r"$t_{CP}$" if ind_T==2 else r"$t_f$"
+    out = 5             #removed sites at borders of the chain
+#    wf = "gs"
+    wf = "t-ev"
+    CF = fs.compute_CF_pm(ind_T,args,wf,out)
+    #
+    in_ = 1         #first distance plotted
+    end_ = 2*out#11#N//6     #removed distances from end
+    step = 2        #1--> all distances, 2--> only even/odd distances
+    #
+    n_fig += 1
+    ax = fig.add_subplot(fig_x,fig_y,n_fig) 
     for n,Tau in enumerate(list_Tau):
-        plt.plot(Tau,fit_CL[n],'*',color=cols[n%len(cols)])
-    popt, pcov = curve_fit(fs.pow_law,list_Tau,fit_CL,p0=[1,-0.5])
-    X = np.linspace(list_Tau[0],list_Tau[-1],100)
-    plt.plot(X,fs.pow_law(X,*popt))
-    plt.text(list_Tau[len(list_Tau)//2],fit_CL[1],'exponent='+"{:3.4f}".format(popt[1]),size=s_)
-    plt.ylabel("Correlation length",size=s_)
-    plt.xlabel(r"$\tau_Q$",size=s_)
+        ax.plot(np.arange(in_,N-end_,step),CF[n][in_:N-end_:step],'*',label=r"$\tau_Q=$"+str(Tau),color=cols[n%len(cols)])
+    ax.set_yscale('log')
+    ax.set_xscale('log')
+    ax.set_ylabel("$G(r)$",size=s_)
+    ax.set_xlabel("$r$",size=s_)
+   
+    if 1:
+        y_ind_end = np.nonzero(np.isnan(CF[-1][in_:N-end_:step]))[0][0]
+        y_fit = CF[-1][in_:y_ind_end*step:step]
+        popt,pcov = curve_fit(fs.pow_law,np.arange(in_,y_ind_end*step,step),y_fit,p0=[1,-2])
+        print(popt)
+        ax.plot(np.linspace(in_,y_ind_end*step,1000),fs.pow_law(np.linspace(in_,y_ind_end*step,1000),*popt),'k-',label='a='+"{:.4f}".format(popt[1]))
+    else:
+#    except:
+        print("Error in fitting")
+    ax.text(1,1e-6,wf+" wavefunction, t="+t_text,size=s_)
+    plt.legend()
 plt.show()
 
 
