@@ -487,7 +487,7 @@ def compute_CF_zz(ind_T,args,wf,out):
                     Gr += temp_i*np.conjugate(temp_i)
                 if Nr:
                     Gr /= Nr
-                    CF[-1][r] = np.real(Gr) if np.real(Gr) > 1e-15 else np.nan
+                    CF[-1][r] = np.real(Gr) if abs(np.real(Gr)) > 1e-15 else np.nan
     return CF
 
 def compute_CF_pm(ind_T,args,wf,out):
@@ -536,10 +536,8 @@ def compute_CF_pm(ind_T,args,wf,out):
             def G_ij(wf,i_,j_,N_):
                 res = 0
                 for s in range(N_//2):
-                    res += wf[i_,s]*np.conjugate(wf[j_,s]) #<c^dag_i c_j>
-                for s in range(N_//2):
-                    res += wf[j_,s]*np.conjugate(wf[i_,s]) #<c^dag_j c_i>
-                return res/2
+                    res -= wf[i_,s]*np.conjugate(wf[j_,s])
+                return res
             #
             big_G = np.zeros((N,N),dtype=complex)
             for i in range(N):
@@ -548,20 +546,27 @@ def compute_CF_pm(ind_T,args,wf,out):
             for r in range(1,N):
                 rho_xx = 0
                 rho_yy = 0
+#                rho_zz = 0
                 Nr = 0
                 for i in range(out,N-out):
                     if r+i >= N-out:
                         continue
                     Nr += 1
-                    mat_xx = big_G[i:i+r-1,i+1:i+r]
-                    mat_yy = big_G[i+1:i+r,i:i+r-1]
-                    rho_xx += np.linalg.det(mat_xx)/4
-                    rho_yy += np.linalg.det(mat_yy)/4
+                    mat_xx = big_G[i:i+r,i+1:i+r+1]
+                    mat_yy = big_G[i+1:i+r+1,i:i+r]
+                    rho_xx += np.linalg.det(mat_xx)
+                    rho_yy += np.linalg.det(mat_yy)
+#                    rho_zz += big_G[i+r,i]*big_G[i,i+r]
+                    if 0:#i in [10,11,12,13,14,15,]:
+                        print("i",i)
+                        print("mat xx:",mat_xx,"\n",np.linalg.det(mat_xx))
+                        input()
                 if Nr:
                     rho_xx /= Nr
                     rho_yy /= Nr
-                    res = rho_xx#rho_xx+rho_yy
-                    CF[-1][r] = np.real(res) if np.real(res) > 1e-15 else np.nan
+#                    rho_zz /= Nr
+                    res = rho_xx+rho_yy
+                    CF[-1][r] = np.real(res) if abs(np.real(res)) > 1e-15 else np.nan
     return CF
 
 def pow_law(x,a,b):

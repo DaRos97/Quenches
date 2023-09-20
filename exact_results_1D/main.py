@@ -60,7 +60,7 @@ try:
     type_of_quench = "real" #as opposed to linear
     #
     plot_ramp = False
-    compute_fid = 0
+    compute_fid = 1
     compute_nex = 0
     compute_pop_ev = 0
     compute_pop_T = 0
@@ -294,9 +294,9 @@ if compute_CF_zz:
 if compute_CF_pm:
     ind_T = 2                  #-1 is final time ait end of quench
     t_text = r"$t_{CP}$" if ind_T==2 else r"$t_f$"
-    out = 5             #removed sites at borders of the chain
-#    wf = "gs"
-    wf = "t-ev"
+    out = 1             #removed sites at borders of the chain
+    wf = "gs"
+#    wf = "t-ev"
     CF = fs.compute_CF_pm(ind_T,args,wf,out)
     #
     in_ = 1         #first distance plotted
@@ -306,12 +306,12 @@ if compute_CF_pm:
     n_fig += 1
     ax = fig.add_subplot(fig_x,fig_y,n_fig) 
     for n,Tau in enumerate(list_Tau):
-        ax.plot(np.arange(in_,N-end_,step),CF[n][in_:N-end_:step],'*',label=r"$\tau_Q=$"+str(Tau),color=cols[n%len(cols)])
+        ax.plot(np.arange(in_,N-end_,step),-CF[n][in_:N-end_:step],'*',label=r"$\tau_Q=$"+str(Tau),color=cols[n%len(cols)])
     ax.set_yscale('log')
     ax.set_xscale('log')
     ax.set_ylabel("$G(r)$",size=s_)
     ax.set_xlabel("$r$",size=s_)
-   
+    
     if 1:
         y_ind_end = np.nonzero(np.isnan(CF[-1][in_:N-end_:step]))[0][0]
         y_fit = CF[-1][in_:y_ind_end*step:step]
