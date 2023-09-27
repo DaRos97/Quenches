@@ -6,7 +6,7 @@ prec_L = 1e-10       #precision required in L maximization
 L_method = 'Brent'
 L_bounds = (0,50)
 L_b_2 = 0.05
-cutoff_L = cutoff_O = 1e-7
+cutoff_L = cutoff_O = 1e-4
 #phase diagram
 hi = 10
 hf = 0

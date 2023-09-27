@@ -16,8 +16,7 @@ try:
     opts, args = getopt.getopt(argv, "N:S:K:",["disp"])
     N = 0      #inp.J point in phase diagram
     txt_S = '50'
-    K = 40      #number ok cuts in BZ
-    numb_it = 3
+    K = 30      #number ok cuts in BZ
     save_to_file = True
     disp = True
 except:
@@ -38,13 +37,14 @@ h = inp.H[N]
 J = (J_nn,h)
 S_label = {'50':0.5,'36':(np.sqrt(3)-1)/2,'34':0.34,'30':0.3,'20':0.2}
 S = S_label[txt_S]
+print("Using parameters: h=",str(h),", S=",str(S),", K=",str(K))
 #BZ points
 Nx = K;     Ny = K
 #Filenames
 DirName = 'Data/S'+txt_S+'/'
 DataDir = DirName + str(Nx) + '/'
 ReferenceDir = DirName + str(13) + '/'
-csvname = 'J_h=('+'{:5.4f}'.format(J_nn).replace('.','')+'_'+'{:5.4f}'.format(h).replace('.','')+').csv'
+csvname = 'J_h=('+str(J_nn)+'_'+'{:5.4f}'.format(h).replace('.','')+').csv'
 csvfile = DataDir + csvname
 #BZ points
 kxg = np.linspace(0,2*np.pi,Nx)
@@ -66,7 +66,7 @@ Args_O = (KM,K,S,J)
 Args_L = (KM,K,S,J,inp.L_bounds)
 Ti = t()
 #
-P_initial = [0.1,0.5]
+P_initial = [0.54,0.11]
 new_O = P_initial;      old_O_1 = new_O;      old_O_2 = new_O
 new_L = (inp.L_bounds[1]-inp.L_bounds[0])/2 + inp.L_bounds[0];       old_L_1 = 0;    old_L_2 = 0
 #
@@ -105,7 +105,7 @@ while continue_loop:
         continue_loop = False
         new_L = fs.compute_L(new_O,Args_L)
     if disp:
-        print("Step ",step,": ",new_L,*new_O[:],end='\n')
+        print("Step ",step,": ",new_L,*new_O,end='\n')
     #Margin in number of steps
     if step > inp.MaxIter:
         print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!Exceeded number of steps!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")

@@ -6,15 +6,15 @@ import matplotlib.pyplot as plt
 from pfapack import pfaffian as pf
 plt.rcParams.update({"text.usetex": True,})
 from contextlib import redirect_stdout
+from itertools import combinations
+
 
 def H_t(N_,J_,h_,BC_):
     H_ = np.zeros((N_,N_))
     for i in range(N_-1):
-        H_[i,i+1] = H_[i+1,i] = -J_*2
+        H_[i,i+1] = H_[i+1,i] = J_/2       #-J_*2
         H_[i,i] = 2*h_*(-1)**(i+1)
     H_[N_-1,N_-1] = 2*h_*(-1)**(N_)
-    if BC_ == "periodic":
-        H_[0,N_-1] = H_[N_-1,0] = -J_*2
     return H_
 
 #Real and linear quenches
@@ -25,7 +25,7 @@ def h_t_linear(t_,Tau_):
 h_t_dic = {'real':h_t_real, 'linear':h_t_linear}
 def J_t_real(t_,Tau_):
     sigma = Tau_*np.tan(1/2)/np.sqrt(np.log(2))
-    return np.exp(-(t_/sigma)**2)
+    return 4*np.exp(-(t_/sigma)**2)
 def J_t_linear(t_,Tau_):
     jj = 1
     try:
@@ -432,7 +432,7 @@ def compute_Enex(args):
                         print(str(J[s]),'\t',"{:.3f}".format(h[s]),'\t',"{:.4f}".format(Enex[n][s]))
     return Enex
 
-def compute_CF_zz(ind_T,args,wf,out):
+def compute_CF_zz(ind_T,args,wf,in_,out_,step_site):
     N,dt,list_Tau,BC,type_of_quench = args
     datadir = datadir_dic[type_of_quench]
     h_t = h_t_dic[type_of_quench]
@@ -445,9 +445,12 @@ def compute_CF_zz(ind_T,args,wf,out):
         print("Using time-evolved wf at time ",ind_T)
     else:
         print("Using istantaneous GS at time ",ind_T)
+        list_Tau = [0,]
     for n,Tau in enumerate(list_Tau):
         name_pars = str(N)+'_'+str(Tau)+'-'+str(dt)+'_'+BC
-        filename = datadir+'CF_'+name_pars+'.npy'
+        t_text = r"$t_{CP}$" if ind_T==2 else r"$t_f$"
+        name_spec = t_text+'_'+wf+'_'+str(in_)+'_'+str(out_)+'_'+str(step_site)+'_'
+        filename = datadir+'CFzz_'+name_spec+name_pars+'.npy'
         try:
             CF.append(np.load(filename))
         except:
@@ -474,11 +477,14 @@ def compute_CF_zz(ind_T,args,wf,out):
                 psi_t = evec
             #Test
             CF.append(np.zeros(N))
-            for r in range(N):
+            for r in range(in_,N):
+                if (r-in_)%step_site==1:
+                    CF[-1][r] = np.nan
+                    continue
                 Gr = 0
                 Nr = 0
-                for i in range(out,N-out):
-                    if r+i >= N-out:
+                for i in range(out_,N-out_):
+                    if r+i >= N-out_:
                         continue
                     Nr += 1
                     temp_i = 0
@@ -488,9 +494,10 @@ def compute_CF_zz(ind_T,args,wf,out):
                 if Nr:
                     Gr /= Nr
                     CF[-1][r] = np.real(Gr) if abs(np.real(Gr)) > 1e-15 else np.nan
+            np.save(filename,CF[-1])
     return CF
 
-def compute_CF_pm(ind_T,args,wf,out):
+def compute_CF_pm(ind_T,args,wf,in_,out_,step_site,end_distance):
     N,dt,list_Tau,BC,type_of_quench = args
     datadir = datadir_dic[type_of_quench]
     h_t = h_t_dic[type_of_quench]
@@ -503,9 +510,12 @@ def compute_CF_pm(ind_T,args,wf,out):
         print("Using time-evolved wf at time ",ind_T)
     else:
         print("Using istantaneous GS at time ",ind_T)
+        list_Tau = [0,]
     for n,Tau in enumerate(list_Tau):
         name_pars = str(N)+'_'+str(Tau)+'-'+str(dt)+'_'+BC
-        filename = datadir+'CF_'+name_pars+'.npy'
+        t_text = r"$t_{CP}$" if ind_T==2 else r"$t_f$"
+        name_spec = t_text+'_'+wf+'_'+str(in_)+'_'+str(out_)+'_'+str(step_site)+'_'+str(end_distance)+'_'
+        filename = datadir+'CFpm_'+name_spec+name_pars+'.npy'
         try:
             CF.append(np.load(filename))
         except:
@@ -533,40 +543,61 @@ def compute_CF_pm(ind_T,args,wf,out):
             #Test
             CF.append(np.zeros(N))
             #
-            def G_ij(wf,i_,j_,N_):
+            def G_ij(wf,i_,j_):      #   <c^dag_ic_j>
                 res = 0
-                for s in range(N_//2):
-                    res -= wf[i_,s]*np.conjugate(wf[j_,s])
+                for s_ in range(wf.shape[0]//2):
+                    res += wf[i_,s_]*np.conjugate(wf[j_,s_])
                 return res
+            #
+            def matrix_ij(i_,r_,s_):
+                s_x = np.array([0] + list(s_)) +i_
+                s_y = np.array(list(s_) + [r_]) + i_
+                xx,yy = np.meshgrid(s_x,s_y)
+                return big_G[xx,yy]#.T
             #
             big_G = np.zeros((N,N),dtype=complex)
             for i in range(N):
                 for j in range(N):
-                    big_G[i,j] = G_ij(psi_t,i,j,N)
-            for r in range(1,N):
-                rho_xx = 0
-                rho_yy = 0
+                    big_G[i,j] = G_ij(psi_t,i,j)
+            #
+            for distance in range(in_,N):
+                if distance > end_distance or (distance-in_)%step_site==1:
+                    CF[-1][distance] = np.nan
+                    continue
+                print(distance)
+#                rho_xx = 0
+#                rho_yy = 0
 #                rho_zz = 0
+                rho_pm = 0
                 Nr = 0
-                for i in range(out,N-out):
-                    if r+i >= N-out:
+                for site in range(out_,N-out_):
+                    #print(site,distance)
+                    if distance+site >= N-out_:
                         continue
                     Nr += 1
-                    mat_xx = big_G[i:i+r,i+1:i+r+1]
-                    mat_yy = big_G[i+1:i+r+1,i:i+r]
-                    rho_xx += np.linalg.det(mat_xx)
-                    rho_yy += np.linalg.det(mat_yy)
+#                    mat_xx = big_G[site:site+distance,site+1:site+distance+1]
+#                    mat_yy = big_G[i+1:i+r+1,i:i+r]
+#                    rho_xx += np.linalg.det(mat_xx)
+#                    rho_yy += np.linalg.det(mat_yy)
 #                    rho_zz += big_G[i+r,i]*big_G[i,i+r]
-                    if 0:#i in [10,11,12,13,14,15,]:
-                        print("i",i)
-                        print("mat xx:",mat_xx,"\n",np.linalg.det(mat_xx))
-                        input()
+                    rho_pm += big_G[site,site+distance]
+                    #print(big_G[site,site+distance])
+                    for iteration in range(1,distance):
+                        ss = list(combinations(np.arange(1,distance),iteration))
+                        #print(ss)
+                        for step in ss:
+                            rho_pm += 2**iteration*np.linalg.det(matrix_ij(site,distance,step))
+
                 if Nr:
-                    rho_xx /= Nr
-                    rho_yy /= Nr
+#                    rho_xx /= Nr
+#                    rho_yy /= Nr
 #                    rho_zz /= Nr
-                    res = rho_xx+rho_yy
-                    CF[-1][r] = np.real(res) if abs(np.real(res)) > 1e-15 else np.nan
+                    rho_pm /= Nr
+                    res = rho_pm
+                    #print("r = ",distance,res)
+                    CF[-1][distance] = np.real(res) if abs(np.real(res)) > 1e-15 else np.nan
+                #input()
+            np.save(filename,CF[-1])
     return CF
 
 def pow_law(x,a,b):

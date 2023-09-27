@@ -60,15 +60,15 @@ try:
     type_of_quench = "real" #as opposed to linear
     #
     plot_ramp = False
-    compute_fid = 1
+    compute_fid = 0
     compute_nex = 0
     compute_pop_ev = 0
     compute_pop_T = 0
     compute_Enex = 0
     compute_en_CP = 0
     compute_S = 0
-    compute_CF_zz = 0
-    compute_CF_pm = 1
+    compute_CF_zz = 1
+    compute_CF_pm = 0
     tot_figs = 3*compute_pop_T + compute_en_CP + compute_fid + compute_nex + compute_Enex + compute_S + compute_CF_zz + compute_CF_pm
     if compute_pop_ev:
         tot_figs += len(list_Tau)
@@ -266,22 +266,21 @@ if compute_S:
 if compute_CF_zz:
     ind_T = 2                  #-1 is final time ait end of quench
     t_text = r"$t_{CP}$" if ind_T==2 else r"$t_f$"
-    out = 5             #removed sites at borders of the chain
-#    wf = "gs"
-    wf = "t-ev"
-    CF = fs.compute_CF_zz(ind_T,args,wf,out)
-    #
     in_ = 1         #first distance plotted
-    end_ = 2*out#11#N//6     #removed distances from end
+    out_ = 9             #removed sites at borders of the chain
+    end_ = 2*out_#11#N//6     #removed distances from end
     step = 2        #1--> all distances, 2--> only even/odd distances
     #
+#    wf = "gs"
+    wf = "t-ev"
+    CF = fs.compute_CF_zz(ind_T,args,wf,in_,out_,step)
     n_fig += 1
     ax = fig.add_subplot(fig_x,fig_y,n_fig) 
     for n,Tau in enumerate(list_Tau):
         ax.plot(np.arange(in_,N-end_,step),CF[n][in_:N-end_:step],'*',label=r"$\tau_Q=$"+str(Tau),color=cols[n%len(cols)])
     ax.set_yscale('log')
     ax.set_xscale('log')
-    ax.set_ylabel("$G(r)$",size=s_)
+    ax.set_ylabel(r"$\langle S^z_iS^z_{i+r}\rangle-\langle S^z_i\rangle\langle S^z_{i+r}\rangle$",size=s_)
     ax.set_xlabel("$r$",size=s_)
     try:
         popt,pcov = curve_fit(fs.pow_law,np.arange(in_,N-end_,step),CF[-1][in_:N-end_:step],p0=[1,-2])
@@ -294,14 +293,15 @@ if compute_CF_zz:
 if compute_CF_pm:
     ind_T = 2                  #-1 is final time ait end of quench
     t_text = r"$t_{CP}$" if ind_T==2 else r"$t_f$"
-    out = 1             #removed sites at borders of the chain
-    wf = "gs"
-#    wf = "t-ev"
-    CF = fs.compute_CF_pm(ind_T,args,wf,out)
-    #
     in_ = 1         #first distance plotted
-    end_ = 2*out#11#N//6     #removed distances from end
+    out_ = 9             #removed sites at borders of the chain
+    end_ = 2*out_#11#N//6     #removed distances from end
+    end_distance = 15
     step = 2        #1--> all distances, 2--> only even/odd distances
+    #
+#    wf = "gs"
+    wf = "t-ev"
+    CF = fs.compute_CF_pm(ind_T,args,wf,in_,out_,step,end_distance)
     #
     n_fig += 1
     ax = fig.add_subplot(fig_x,fig_y,n_fig) 
@@ -309,15 +309,18 @@ if compute_CF_pm:
         ax.plot(np.arange(in_,N-end_,step),-CF[n][in_:N-end_:step],'*',label=r"$\tau_Q=$"+str(Tau),color=cols[n%len(cols)])
     ax.set_yscale('log')
     ax.set_xscale('log')
-    ax.set_ylabel("$G(r)$",size=s_)
+    ax.set_ylabel(r"$\langle S^+_iS^-_{i+r}\rangle$",size=s_)
     ax.set_xlabel("$r$",size=s_)
-    
+    def corr_pm(x,c3,c4):
+        for i in range(len(x)):
+            x[i] = int(x[i])
+        return c3*x**(-5/2) + c4*(-1)**x*x**(-1/2)
     if 1:
         y_ind_end = np.nonzero(np.isnan(CF[-1][in_:N-end_:step]))[0][0]
         y_fit = CF[-1][in_:y_ind_end*step:step]
-        popt,pcov = curve_fit(fs.pow_law,np.arange(in_,y_ind_end*step,step),y_fit,p0=[1,-2])
+        popt,pcov = curve_fit(fs.pow_law,np.arange(in_,y_ind_end*step,step),y_fit,p0=[0.48,-0.5])
         print(popt)
-        ax.plot(np.linspace(in_,y_ind_end*step,1000),fs.pow_law(np.linspace(in_,y_ind_end*step,1000),*popt),'k-',label='a='+"{:.4f}".format(popt[1]))
+        #ax.plot(np.linspace(in_,y_ind_end*step,1000),fs.pow_law(np.linspace(in_,y_ind_end*step,1000),*popt),'k-',label='a='+"{:.4f}".format(popt[1]))
     else:
 #    except:
         print("Error in fitting")
