@@ -30,7 +30,7 @@ except:
         exp = pickle.load(f)
 
     stupid_keys = list(exp.keys())
-    len_f = int(np.sqrt(len(stupid_keys)))
+    len_f = int(np.sqrt(len(stupid_keys))) #number of values of f_c/f_q for which a parameter ('xx', 'z', ecc..) is given in the data
     data = {}
     for i in range(len_f): #f_coupler
         for j in range(len_f): #f_quibit
@@ -42,7 +42,7 @@ except:
     with open(f_q_dataname, 'rb') as f:
         tfq = pickle.load(f)
 
-    n_tfc = len(tfc.keys())
+    n_tfc = len(tfc.keys())     #number of times for which f_c is given in the data
     n_tfq = len(tfq.keys())
     tcs = np.linspace(0,6,n_tfc,endpoint=True)
     tqs = np.linspace(0,6,n_tfq,endpoint=True)
@@ -52,7 +52,6 @@ except:
     #
     fun_fc = interp1d(tcs,fc)
     fun_fq = interp1d(tqs,fq)
-
     #
     def find_z_f(point,*args):
         data, len_f = args
@@ -81,15 +80,19 @@ except:
     xx_labels = list(data[0]['xx'].keys())
     z_data = np.zeros((N,2*n_tfc))
     z_labels = list(data[0]['z'].keys())
-    for t in range(n_tfc):
-        for i in range(N):
-            xx_data[i,t] = find_xx_f(xx_labels[i],*args)(fun_fc(tcs[t]),fun_fq(tqs[t]))/2   #1/2 since j_xx = xx/2
-            z_data[i,t] = find_z_f(z_labels[i],*args)(fun_fc(tcs[t]),fun_fq(tqs[t]))
+    for i in range(N):
+        fun_z_f = find_z_f(z_labels[i],*args)
+        fun_xx_f = find_xx_f(xx_labels[i],*args)
+        for t in range(n_tfc):
+            xx_data[i,t] = fun_xx_f(fun_fc(tcs[t]),fun_fq(tqs[t]))/2   #1/2 since j_xx = xx/2
+            z_data[i,t] = fun_z_f(fun_fc(tcs[t]),fun_fq(tqs[t]))
             xx_data[i,-t-1] = xx_data[i,t]
             z_data[i,-t-1] = z_data[i,t]
-        #average_z = z_data[:,t].sum()/N
-        #z_data[:,t] -= average_z
-        #z_data[:,-t-1] -= average_z
+    if 1:       #use for z just the staggered -> remove the average
+        for t in range(n_tfc):
+            average_z = z_data[:,t].sum()/N
+            z_data[:,t] -= average_z
+            z_data[:,-t-1] += average_z
     #Save for future use
     np.save(z_name,z_data)
     np.save(xx_name,xx_data)
@@ -99,26 +102,33 @@ except:
     with open(xx_labels_name, 'w') as f:
         for i in range(len(xx_labels)):
             f.write(str(xx_labels[i])+';')
-
+    #
     print("Computed parameters of data")
 
 def find_parameters(list_Tau,steps):
-    N, steps_0 = z_data.shape
+    N, steps_0 = z_data.shape   #steps_0 is the number of time steps in the datafile of f_c/f_cq, times 2
     #Fit to get array of functions
     ttt = np.linspace(0,12,steps_0)
-    times_0 = np.linspace(0,12,steps)
+    times_0 = np.linspace(0,12,steps)   #steps is the number of steps I want to compute in each ramp
+    #For each site interpolate z and xx in time and compute it in the number of steps we want
     h_t = []
     J_t = []
+    aa = list(np.linspace(1,0,steps//2))
+    for j in range(steps//2):
+        aa.append(aa[steps//2-1-j])
+    aa = np.array(aa)
     for i in range(N):
-        h_t.append(interp1d(ttt,z_data[i])(times_0))
-        J_t.append(interp1d(ttt,xx_data[i])(times_0))
+        #h_t.append(interp1d(ttt,z_data[i])(times_0))
+        #J_t.append(interp1d(ttt,xx_data[i])(times_0))
+        h_t.append(aa*0.5*(-1)**i)
+        J_t.append(np.ones(steps)*1)
     #Compute times of each quench
     times_dic = {}
     for n in range(len(list_Tau)):
         times_dic[list_Tau[n]] = np.linspace(0,list_Tau[n],steps)
     if 0: #plot ramp profiles
-        for i in range(len(list_Tau)):
-            plt.plot(times_dic[list_Tau[i]],h_t[1],label=str(list_Tau[i]))
+        for n in range(len(list_Tau)):
+            plt.plot(times_dic[list_Tau[n]],h_t[1],label=str(list_Tau[n]))
         plt.legend()
         plt.show()
         exit()

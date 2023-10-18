@@ -5,9 +5,9 @@ import functions as fs
 import parameters as ps
 #
 #Additional parameters
-list_Tau = [0.5,1,6,12,24] #List of quench times -> in ns (total time of quench->exp one is 12ns)
+list_Tau = [0.01,12,24] #List of quench times -> in ns (total time of quench->exp one is 12ns)
 plot_ramp = False
-save_data = True
+save_data = False
 s_ = 20 #fontsize
 steps = 200
 

@@ -12,6 +12,7 @@ def H_t(N_,J_,h_,t_):
     return H_
 #
 def time_evolve(args):
+    #Time evolve wavefunction for each quench time
     h_t,J_t,times_dic,list_Tau,result_dirname,save_data = args
     #
     psi_ = []
@@ -20,17 +21,17 @@ def time_evolve(args):
         name_pars = str(Tau)+'_'+"{:.4f}".format(dt).replace('.',',')
         N = len(h_t)
         steps = len(times_dic[Tau])
-        #Time evolution
+        #
         filename = result_dirname+'time_evolved_wf_'+name_pars+'.npy'
         try:
             psi = np.load(filename)
             psi_.append(psi)
         except:
             print("Time evolution of Tau = ",Tau," ...")
-            psi = np.zeros((steps,N,N),dtype=complex)     #steps->time, N -> number of sites,  N -> number of modes
+            psi = np.zeros((steps,N,N),dtype=complex)     #steps->time, N -> number of sites,  N -> number of modes (evoleve all of them even if just the first N/2 will be occupied)
             H_0 = H_t(N,J_t,h_t,0)
             E_0, psi_0 = scipy.linalg.eigh(H_0)
-            psi[0] = psi_0[:,:N]
+            psi[0] = psi_0
             for s in range(1,steps):
                 H_temp = -1j*2*np.pi*H_t(N,J_t,h_t,s)*dt
                 exp_H = expm(H_temp)
@@ -43,6 +44,7 @@ def time_evolve(args):
     return psi_
 
 def compute_fidelity(args):
+    #Compute fidelity at all times for each quench time
     h_t,J_t,times_dic,list_Tau,result_dirname,save_data = args
     #
     fid_ = []
@@ -61,7 +63,8 @@ def compute_fidelity(args):
             try:
                 psi = np.load(filename_psi)
             except:
-                psi = time_evolve(args)[n]
+                args2 = (h_t,J_t,times_dic,[Tau,],result_dirname,save_data)
+                psi = time_evolve(args2)[0]
             #Compute fidelity
             print("Computing fidelity of Tau = ",Tau," ...")
             fid_.append(np.zeros(steps))
@@ -70,13 +73,13 @@ def compute_fidelity(args):
                 phi_gs = evec[:,:N//2]             #GS modes
                 overlap_matrix = np.matmul(np.conjugate(psi[s,:,:N//2]).T,phi_gs)
                 det = np.linalg.det(overlap_matrix)
-                fid_[n][s] = np.linalg.norm(det)**2
+                fid_[-1][s] = np.linalg.norm(det)**2
             if save_data:
-                np.save(filename,fid_[n])
+                np.save(filename,fid_[-1])
     return fid_
 
-
 def compute_nex(ind_T,args):
+    #Compute density of excitations at time ind_T for each quench time
     h_t,J_t,times_dic,list_Tau,result_dirname,save_data = args
     #
     N = len(h_t)
@@ -115,6 +118,7 @@ def compute_nex(ind_T,args):
     return nex
 
 def compute_pop_ev(args,rg):
+    #Compute mode population for low energy modes (N//2+-rg) during the quench for each quench time
     h_t,J_t,times_dic,list_Tau,result_dirname,save_data = args
     #
     N = len(h_t)
