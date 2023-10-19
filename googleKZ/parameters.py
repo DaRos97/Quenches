@@ -76,9 +76,9 @@ except:
     #
     args = (data,len_f)
     N = len(data[0]['z'].keys())
-    xx_data = np.zeros((N,2*n_tfc))
+    xx_data = np.zeros((N,n_tfc))
     xx_labels = list(data[0]['xx'].keys())
-    z_data = np.zeros((N,2*n_tfc))
+    z_data = np.zeros((N,n_tfc))
     z_labels = list(data[0]['z'].keys())
     for i in range(N):
         fun_z_f = find_z_f(z_labels[i],*args)
@@ -86,13 +86,10 @@ except:
         for t in range(n_tfc):
             xx_data[i,t] = fun_xx_f(fun_fc(tcs[t]),fun_fq(tqs[t]))/2   #1/2 since j_xx = xx/2
             z_data[i,t] = fun_z_f(fun_fc(tcs[t]),fun_fq(tqs[t]))
-            xx_data[i,-t-1] = xx_data[i,t]
-            z_data[i,-t-1] = z_data[i,t]
-    if 1:       #use for z just the staggered -> remove the average
+    if 0:       #use for z just the staggered -> remove the average
         for t in range(n_tfc):
             average_z = z_data[:,t].sum()/N
             z_data[:,t] -= average_z
-            z_data[:,-t-1] += average_z
     #Save for future use
     np.save(z_name,z_data)
     np.save(xx_name,xx_data)
@@ -108,20 +105,14 @@ except:
 def find_parameters(list_Tau,steps):
     N, steps_0 = z_data.shape   #steps_0 is the number of time steps in the datafile of f_c/f_cq, times 2
     #Fit to get array of functions
-    ttt = np.linspace(0,12,steps_0)
-    times_0 = np.linspace(0,12,steps)   #steps is the number of steps I want to compute in each ramp
+    ttt = np.linspace(0,6,steps_0)
+    times_0 = np.linspace(0,6,steps)   #steps is the number of steps I want to compute in each ramp
     #For each site interpolate z and xx in time and compute it in the number of steps we want
     h_t = []
     J_t = []
-    aa = list(np.linspace(1,0,steps//2))
-    for j in range(steps//2):
-        aa.append(aa[steps//2-1-j])
-    aa = np.array(aa)
     for i in range(N):
-        #h_t.append(interp1d(ttt,z_data[i])(times_0))
-        #J_t.append(interp1d(ttt,xx_data[i])(times_0))
-        h_t.append(aa*0.5*(-1)**i)
-        J_t.append(np.ones(steps)*1)
+        h_t.append(interp1d(ttt,z_data[i])(times_0))
+        J_t.append(interp1d(ttt,xx_data[i])(times_0))
     #Compute times of each quench
     times_dic = {}
     for n in range(len(list_Tau)):
@@ -130,19 +121,6 @@ def find_parameters(list_Tau,steps):
         for n in range(len(list_Tau)):
             plt.plot(times_dic[list_Tau[n]],h_t[1],label=str(list_Tau[n]))
         plt.legend()
-        plt.show()
-        exit()
-    #
-    if 0:
-        plt.figure()
-        plt.title("1D ramp")
-        times_inset = np.linspace(0,12,steps_0)
-        plt.subplot(1,2,1)
-        for i in range(N):
-            plt.plot(times_inset,h_t[i],label='h'+str(z_labels[i]))
-        plt.subplot(1,2,2)
-        for i in range(N):
-            plt.plot(times_inset,J_t[i],label='J'+str(z_labels[i]))
         plt.show()
         exit()
     #

@@ -2,6 +2,8 @@ import numpy as np
 import scipy
 from scipy.linalg import expm
 
+cols = ['r','g','y','b','k','m','orange','forestgreen']
+
 def H_t(N_,J_,h_,t_):
     H_ = np.zeros((N_,N_))
     for i in range(N_-1):
@@ -98,7 +100,8 @@ def compute_nex(ind_T,args):
             try:
                 psi = np.load(filename_psi)
             except:
-                psi = time_evolve(args)[n]
+                args2 = (h_t,J_t,times_dic,[Tau,],result_dirname,save_data)
+                psi = time_evolve(args)[0]
             #
             ind_t = len(times)//2 if ind_T == 2 else ind_T
             res = 0
@@ -117,8 +120,8 @@ def compute_nex(ind_T,args):
                 np.save(filename,res)
     return nex
 
-def compute_pop_ev(args,rg):
-    #Compute mode population for low energy modes (N//2+-rg) during the quench for each quench time
+def compute_populations(args):
+    #Compute mode population for low energy modes (N//2+-rg) at the critical point
     h_t,J_t,times_dic,list_Tau,result_dirname,save_data = args
     #
     N = len(h_t)
@@ -128,7 +131,7 @@ def compute_pop_ev(args,rg):
         dt = times_dic[Tau][1]-times_dic[Tau][0]
         name_pars = str(Tau)+'_'+"{:.4f}".format(dt).replace('.',',')
         steps = len(times_dic[Tau])
-        filename = result_dirname+'n_q_'+name_pars+'.npy'
+        filename = result_dirname+'populations_'+name_pars+'.npy'
         try:
             n_q.append(np.load(filename))
         except:
@@ -138,24 +141,64 @@ def compute_pop_ev(args,rg):
             try:
                 psi = np.load(filename_psi)
             except:
-                psi = time_evolve(args)[n]
+                args2 = (h_t,J_t,times_dic,[Tau,],result_dirname,True)
+                psi = time_evolve(args2)[0]
             #
-            res = np.zeros((N,steps))
-            for s in range(steps):
-                H_F = H_t(N,J_t,h_t,s)
-                E_F, psi_0 = scipy.linalg.eigh(H_F) #energy and GS of system
-                for k in range(N//2-rg,N//2+rg):
-                    temp_k = 0
-                    for l in range(N//2):
-                        Gamma_kl = np.matmul(np.conjugate(psi[s,:,l]).T,psi_0[:,k]).sum()
-                        temp_k += np.linalg.norm(Gamma_kl)**2
-                    res[k,s] = temp_k
+            res = np.zeros(N)
+            ind_T = -1
+            H_F = H_t(N,J_t,h_t,ind_T)
+            E_F, psi_0 = scipy.linalg.eigh(H_F) #energy and GS of system at time ind_T
+            for k in range(N):
+                temp_k = 0
+                for l in range(N//2):
+                    Gamma_kl = np.matmul(np.conjugate(psi[ind_T,:,l]).T,psi_0[:,k]).sum()
+                    temp_k += np.linalg.norm(Gamma_kl)**2
+                res[k] = temp_k
             n_q.append(res)
             #
             if save_data:
                 np.save(filename,res)
     return n_q
 
+def compute_energy_state(args):
+    h_t,J_t,times_dic,list_Tau,result_dirname,save_data = args
+    #
+    N = len(h_t)
+    #
+    en_CP = np.zeros(len(list_Tau))
+    for n,Tau in enumerate(list_Tau):
+        dt = times_dic[Tau][1]-times_dic[Tau][0]
+        name_pars = str(Tau)+'_'+"{:.4f}".format(dt).replace('.',',')
+        steps = len(times_dic[Tau])
+        filename = result_dirname+'energy_state_'+name_pars+'.npy'
+        try:
+            en_CP.append(np.load(filename))
+        except:
+            print("Computing energy of state at CP of Tau = ",Tau," ...")
+            #Find time evolved states
+            filename_psi = result_dirname+'time_evolved_wf_'+name_pars+'.npy'
+            try:
+                psi = np.load(filename_psi)
+            except:
+                args2 = (h_t,J_t,times_dic,[Tau,],result_dirname,True)
+                psi = time_evolve(args2)[0]
+            #
+            ind_T = -1      #Critical point
+            #
+            Ham = H_t(N,J_t,h_t,ind_T)
+            eigs_GS, psi_GS = scipy.linalg.eigh(Ham)
+            En_GS = sum(eigs_GS[:N//2])     #Energy of GS
+            En_psi = 0 
+            for k in range(N):
+                temp_k = 0
+                for l in range(N//2):
+                    Gamma_kl = np.matmul(np.conjugate(psi[ind_T,:,l]).T,psi_GS[:,k]).sum()
+                    temp_k += np.linalg.norm(Gamma_kl)**2
+                En_psi += temp_k*eigs_GS[k]
+            en_CP[n] = abs((En_psi-En_GS)/En_GS)
+            if save_data:
+                np.save(filename,en_CP[n])
+    return en_CP
 
 def pow_law(x,a,b):
     return a*np.abs(x)**(b)
