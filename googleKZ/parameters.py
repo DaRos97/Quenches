@@ -5,7 +5,7 @@ from scipy.interpolate import RectBivariateSpline as RBS
 import matplotlib.pyplot as plt
 
 homedir = '/home/dario/Desktop/git/Quenches/googleKZ/'
-datadir = homedir + 'Data/'
+datadir = homedir + 'extracted_exp_Data/'
 
 z_name = datadir+'z_data_suggested.npy'
 z_labels_name = datadir + 'z_labels.txt'
@@ -21,7 +21,7 @@ try:
         xx = f.read().split(';')
     xx_labels = xx[:-1]
 except:
-    exp_dirname = homedir + 'experimental_data/'
+    exp_dirname = homedir + 'experimental_Data/'
     params_dataname = exp_dirname + 'params_Dario'
     f_c_dataname = exp_dirname + 't_to_f_coupler'
     f_q_dataname = exp_dirname + 't_to_f_qubit'
@@ -81,7 +81,7 @@ except:
     z_data = np.zeros((N,n_tfc))
     z_labels = list(data[0]['z'].keys())
     for i in range(N):
-        fun_z_f = find_z_f(z_labels[i],*args)
+        fun_z_f = find_z_f(z_labels[i],*args)#int(0.5*(1+(-1)**i))],*args)
         fun_xx_f = find_xx_f(xx_labels[i],*args)
         for t in range(n_tfc):
             xx_data[i,t] = fun_xx_f(fun_fc(tcs[t]),fun_fq(tqs[t]))/2   #1/2 since j_xx = xx/2

@@ -2,6 +2,8 @@ import numpy as np
 import scipy
 from scipy.linalg import expm
 
+dirname_closed = 'closed_Data/'
+
 cols = ['r','g','y','b','k','m','orange','forestgreen']
 
 def H_t(N_,J_,h_,t_):
@@ -15,7 +17,8 @@ def H_t(N_,J_,h_,t_):
 #
 def time_evolve(args):
     #Time evolve wavefunction for each quench time
-    h_t,J_t,times_dic,list_Tau,result_dirname,save_data = args
+    h_t,J_t,times_dic,list_Tau,home_dirname,save_data = args
+    result_dirname = home_dirname+dirname_closed
     #
     psi_ = []
     for n,Tau in enumerate(list_Tau):
@@ -47,7 +50,8 @@ def time_evolve(args):
 
 def compute_fidelity(args):
     #Compute fidelity at all times for each quench time
-    h_t,J_t,times_dic,list_Tau,result_dirname,save_data = args
+    h_t,J_t,times_dic,list_Tau,home_dirname,save_data = args
+    result_dirname = home_dirname+dirname_closed
     #
     fid_ = []
     for n,Tau in enumerate(list_Tau):
@@ -65,7 +69,7 @@ def compute_fidelity(args):
             try:
                 psi = np.load(filename_psi)
             except:
-                args2 = (h_t,J_t,times_dic,[Tau,],result_dirname,save_data)
+                args2 = (h_t,J_t,times_dic,[Tau,],home_dirname,save_data)
                 psi = time_evolve(args2)[0]
             #Compute fidelity
             print("Computing fidelity of Tau = ",Tau," ...")
@@ -82,7 +86,8 @@ def compute_fidelity(args):
 
 def compute_nex(ind_T,args):
     #Compute density of excitations at time ind_T for each quench time
-    h_t,J_t,times_dic,list_Tau,result_dirname,save_data = args
+    h_t,J_t,times_dic,list_Tau,home_dirname,save_data = args
+    result_dirname = home_dirname+dirname_closed
     #
     N = len(h_t)
     nex = []
@@ -100,7 +105,7 @@ def compute_nex(ind_T,args):
             try:
                 psi = np.load(filename_psi)
             except:
-                args2 = (h_t,J_t,times_dic,[Tau,],result_dirname,save_data)
+                args2 = (h_t,J_t,times_dic,[Tau,],home_dirname,save_data)
                 psi = time_evolve(args)[0]
             #
             ind_t = len(times)//2 if ind_T == 2 else ind_T
@@ -122,7 +127,8 @@ def compute_nex(ind_T,args):
 
 def compute_populations(args):
     #Compute mode population for low energy modes (N//2+-rg) at the critical point
-    h_t,J_t,times_dic,list_Tau,result_dirname,save_data = args
+    h_t,J_t,times_dic,list_Tau,home_dirname,save_data = args
+    result_dirname = home_dirname+dirname_closed
     #
     N = len(h_t)
     #
@@ -141,7 +147,7 @@ def compute_populations(args):
             try:
                 psi = np.load(filename_psi)
             except:
-                args2 = (h_t,J_t,times_dic,[Tau,],result_dirname,True)
+                args2 = (h_t,J_t,times_dic,[Tau,],home_dirname,save_data)
                 psi = time_evolve(args2)[0]
             #
             res = np.zeros(N)
@@ -161,7 +167,8 @@ def compute_populations(args):
     return n_q
 
 def compute_energy_state(args):
-    h_t,J_t,times_dic,list_Tau,result_dirname,save_data = args
+    h_t,J_t,times_dic,list_Tau,home_dirname,save_data = args
+    result_dirname = home_dirname+dirname_closed
     #
     N = len(h_t)
     #
@@ -180,7 +187,7 @@ def compute_energy_state(args):
             try:
                 psi = np.load(filename_psi)
             except:
-                args2 = (h_t,J_t,times_dic,[Tau,],result_dirname,True)
+                args2 = (h_t,J_t,times_dic,[Tau,],home_dirname,save_data)
                 psi = time_evolve(args2)[0]
             #
             ind_T = -1      #Critical point

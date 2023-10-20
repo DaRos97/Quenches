@@ -5,15 +5,15 @@ import functions as fs
 import parameters as ps
 #
 #Additional parameters
-list_Tau = [1,6,12,24] #List of quench times -> in ns (total time of quench->exp one is 12ns)
+list_Tau = [100,] #List of quench times -> in ns (total time of quench->exp one is 12ns)
 plot_ramp = False
 save_data = True
 s_ = 20 #fontsize
-steps = 200
+steps = 100
 
 h_t,J_t,times_dic = ps.find_parameters(list_Tau,steps)
 
-args = (h_t, J_t, times_dic, list_Tau, ps.datadir, save_data)
+args = (h_t, J_t, times_dic, list_Tau, ps.homedir, save_data)
 #
 #Fidelity
 fid = fs.compute_fidelity(args)

@@ -5,7 +5,7 @@ import functions as fs
 import parameters as ps
 
 #
-list_Tau = [10,100,400,1000] #List of quench times -> in ns (total time of quench->exp one is 12ns)
+list_Tau = [100,400,1000] #List of quench times -> in ns (total time of quench->exp one is 12ns)
 save_data = False
 s_ = 20 #fontsize
 steps = 400
