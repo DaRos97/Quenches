@@ -5,11 +5,10 @@ import functions as fs
 import parameters as ps
 #
 #Additional parameters
-list_Tau = [100,] #List of quench times -> in ns (total time of quench->exp one is 12ns)
-plot_ramp = False
+list_Tau = [100,200] #List of quench times -> in ns (total time of quench->exp one is 12ns)
 save_data = True
 s_ = 20 #fontsize
-steps = 100
+steps = 20
 
 h_t,J_t,times_dic = ps.find_parameters(list_Tau,steps)
 

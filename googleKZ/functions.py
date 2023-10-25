@@ -1,6 +1,7 @@
 import numpy as np
 import scipy
 from scipy.linalg import expm
+from tqdm import tqdm
 
 dirname_closed = 'closed_Data/'
 
@@ -37,7 +38,7 @@ def time_evolve(args):
             H_0 = H_t(N,J_t,h_t,0)
             E_0, psi_0 = scipy.linalg.eigh(H_0)
             psi[0] = psi_0
-            for s in range(1,steps):
+            for s in tqdm(range(1,steps)):
                 H_temp = -1j*2*np.pi*H_t(N,J_t,h_t,s)*dt
                 exp_H = expm(H_temp)
                 for m in range(N):
@@ -154,12 +155,10 @@ def compute_populations(args):
             ind_T = -1
             H_F = H_t(N,J_t,h_t,ind_T)
             E_F, psi_0 = scipy.linalg.eigh(H_F) #energy and GS of system at time ind_T
+            G = np.matmul(np.conjugate(psi[ind_T]).T,psi_0)
+            G2 = G*np.conjugate(G)
             for k in range(N):
-                temp_k = 0
-                for l in range(N//2):
-                    Gamma_kl = np.matmul(np.conjugate(psi[ind_T,:,l]).T,psi_0[:,k]).sum()
-                    temp_k += np.linalg.norm(Gamma_kl)**2
-                res[k] = temp_k
+                res[k] = np.real(G2[:N//2,k].sum())
             n_q.append(res)
             #
             if save_data:
