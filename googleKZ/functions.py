@@ -151,14 +151,16 @@ def compute_populations(args):
                 args2 = (h_t,J_t,times_dic,[Tau,],home_dirname,save_data)
                 psi = time_evolve(args2)[0]
             #
-            res = np.zeros(N)
             ind_T = -1
+            res = np.zeros(N)
             H_F = H_t(N,J_t,h_t,ind_T)
             E_F, psi_0 = scipy.linalg.eigh(H_F) #energy and GS of system at time ind_T
+            
             G = np.matmul(np.conjugate(psi[ind_T]).T,psi_0)
             G2 = G*np.conjugate(G)
             for k in range(N):
                 res[k] = np.real(G2[:N//2,k].sum())
+#            res = list(np.flip(np.sort(res[:N//2])))+list(np.flip(np.sort(res[N//2:])))  #sorted result
             n_q.append(res)
             #
             if save_data:

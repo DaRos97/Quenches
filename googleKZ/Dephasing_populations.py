@@ -1,4 +1,4 @@
-import numpy as np
+mport numpy as np
 import matplotlib.pyplot as plt
 plt.rcParams.update({"text.usetex": True,})
 import dephasing_functions as fs

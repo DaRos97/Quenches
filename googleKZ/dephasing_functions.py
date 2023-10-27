@@ -134,40 +134,20 @@ def compute_populations(args):
                 rho = time_evolve(args2)[0]
             #
             ind_T = -1
-            if 0: #Use diagonalization of rho
-                H_F = H_t(N,h_t,J_t,ind_T)
-                E_F, psi_0 = scipy.linalg.eigh(H_F) #energy and GS of system at time ind_T
-                rho_g = np.zeros((N,N),dtype=complex)     #GS(t) DM
-                for m in range(N//2): #GS excited states
-                    rho_g += np.outer(psi_0[:,m],psi_0[:,m])
-                #Diagonalize
-                D_t, M_t = np.linalg.eigh(rho[ind_T])
-                D_g, M_g = np.linalg.eigh(rho_g)
-                #
-                res = np.zeros(N)
-                G = np.matmul(np.conjugate(M_t).T,M_g)
-                G2 = G*np.conjugate(G)
-                for k in range(N):
-                    res[k] = np.real(G2[:N//2,k].sum())
-            else:   #Use Trace
-                #H_fic = np.zeros((N,N),dtype=complex)
-                #for i in range(N):
-                #    H_fic[i,i] = (-1)**i
-                H_fic = H_t(N,h_t,np.zeros((N,N)),0)
-                D_g, M_g = np.linalg.eigh(H_fic)
-                res = np.real(np.diagonal(np.matmul(np.matmul(np.conjugate(M_g).T,rho[ind_T]),M_g)))
-                
-                #res = np.zeros(N)
-                #for k in range(N):
-                #    n_k = np.zeros((N,N),dtype=complex)
-                #    for i in range(N):
-                #        for j in range(N):
-                #            n_k[i,j] = np.exp(-1j*np.pi*(k)/N*(i-j))
-                #    n_k_tilde = np.matmul(np.matmul(np.conjugate(M_t).T,n_k),M_t)
-                #    print(k,np.sum(np.diagonal(n_k_tilde))/N)
-                #exit()
-                    #exp_val = np.trace(np.matmul(rho[ind_T],n_k))/N
-                    #res[k] = np.absolute(exp_val)
+            rho_g = np.zeros((N,N))     #steps->time, N**2 -> number of components of DM, N -> number of modes
+            E_, psi_gs = np.linalg.eigh(H_t(N,h_t,J_t,ind_T))   #GS at time-step s
+            for m in range(N//2):
+                rho_g += np.outer(psi_gs[:,m],psi_gs[:,m])
+            D_g, M_g = np.linalg.eigh(rho_g)
+            M_g = psi_gs
+
+            res = np.real(np.diagonal(np.matmul(np.matmul(M_g.T,rho[ind_T]),M_g)))
+
+            sm = np.real(np.diagonal(np.matmul(np.matmul(np.conjugate(M_g).T,rho[ind_T]),M_g)))[:N//2]
+            bg = np.real(np.diagonal(np.matmul(np.matmul(np.conjugate(M_g).T,rho[ind_T]),M_g)))[N//2:]
+            #res = list(np.flip(np.sort(bg)))+list(np.flip(np.sort(sm)))
+            #print(np.sum(res))
+
             #
             n_q.append(res)
             #
