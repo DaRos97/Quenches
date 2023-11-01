@@ -81,8 +81,12 @@ except:
     z_data = np.zeros((N,n_tfc))
     z_labels = list(data[0]['z'].keys())
     for i in range(N):
-        fun_z_f = find_z_f(z_labels[i],*args)#int(0.5*(1+(-1)**i))],*args)
-        fun_xx_f = find_xx_f(xx_labels[i],*args)
+        if 0:   #use first value of z (actually first 2 since it is staggered) and xx for all sites -> translational invariant
+            fun_z_f = find_z_f(z_labels[int(0.5*(1+(-1)**i))],*args)
+            fun_xx_f = find_xx_f(xx_labels[0],*args)
+        else:
+            fun_z_f = find_z_f(z_labels[i],*args)#int(0.5*(1+(-1)**i))],*args)
+            fun_xx_f = find_xx_f(xx_labels[i],*args)
         for t in range(n_tfc):
             xx_data[i,t] = fun_xx_f(fun_fc(tcs[t]),fun_fq(tqs[t]))/2   #1/2 since j_xx = xx/2
             z_data[i,t] = fun_z_f(fun_fc(tcs[t]),fun_fq(tqs[t]))
@@ -119,8 +123,15 @@ def find_parameters(list_Tau,steps):
         times_dic[list_Tau[n]] = np.linspace(0,list_Tau[n],steps)
     if 0: #plot ramp profiles
         for n in range(len(list_Tau)):
-            plt.plot(times_dic[list_Tau[n]],h_t[1],label=str(list_Tau[n]))
-        plt.legend()
+            if 0:   #plot h
+                for i in range(0,N,2):
+                    plt.plot(times_dic[list_Tau[n]],h_t[i],'r',label=str(list_Tau[n]))
+                    plt.plot(times_dic[list_Tau[n]],h_t[i+1],'b',label=str(list_Tau[n]))
+            else:   #plot xx
+                for i in range(N):
+                    plt.plot(times_dic[list_Tau[n]],J_t[i],'r',label=str(list_Tau[n]))
+
+#        plt.legend()
         plt.show()
         exit()
     #
