@@ -163,11 +163,11 @@ def compute_zphases(dm,h_t,J_t,type_):
     if type_=='random':
         n_p = 100
         list_ph = np.linspace(0,2*np.pi,n_p,endpoint=True)
-        for i in range(N-1):
+        for i in range(1,N-1):
             h1 = h_t[i][ind_T]
             h2 = h_t[i+1][ind_T]
             J = J_t[i][ind_T]
-            E = J*2*np.real(dm[tau][ind_T,i,i+1]*np.exp(1j*list_ph)) #+ h1*np.real(dm[tau][ind_T,i,i] + h2*dm[tau][ind_T,i+1,i+1])
+            E = J*2*np.real(dm[tau][ind_T,i,i+1]*np.exp(1j*list_ph)) + J*2*np.real(dm[tau][ind_T,i-1,i]*np.exp(1j*list_ph)) #+ h1*np.real(dm[tau][ind_T,i,i] + h2*dm[tau][ind_T,i+1,i+1])
             plt.plot(list_ph,E,label=str(i))
 #            plt.text(-0.05-(i%5)/10,E[0],str(i))
 #        plt.xlim(-0.5,2*np.pi)
