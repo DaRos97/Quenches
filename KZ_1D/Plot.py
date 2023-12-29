@@ -1,10 +1,12 @@
 import numpy as np
 import sys,getopt
 import matplotlib.pyplot as plt
-plt.rcParams.update({"text.usetex": True,})
+lt.rcParams.update({"text.usetex": True,})
 import closed_functions as cfs
 import open_functions as ofs
 import parameters as ps
+import general as gn
+from scipy.optimize import curve_fit
 s_ = 15
 
 argv = sys.argv[1:]
@@ -43,9 +45,9 @@ if quantity=='fid':
         dt = times[1]-times[0]
         for g,gamma in enumerate(list_gamma):
             if gamma == 0:
-                filename = result_dir+cfs.names['fid']+cfs.pars_name(tau,dt)+'.npy'
+                filename = result_dir+gn.names[quantity]+'wf_'+gn.pars_name(tau,dt)+'.npy'
             else:
-                filename = result_dir+ofs.names['fid']+ofs.pars_name(tau,gamma,dt)+'.npy'
+                filename = result_dir+gn.names[quantity]+'DM_'+gn.pars_name(tau,dt,gamma)+'.npy'
             try:
                 fid = np.load(filename)
             except:
@@ -66,9 +68,9 @@ elif quantity=='pop':
         dt = times[1]-times[0]
         for g,gamma in enumerate(list_gamma):
             if gamma == 0:
-                filename = result_dir+cfs.names['pop']+cfs.pars_name(tau,dt)+'.npy'
+                filename = result_dir+gn.names[quantity]+'wf_'+gn.pars_name(tau,dt)+'.npy'
             else:
-                filename = result_dir+ofs.names['pop']+ofs.pars_name(tau,gamma,dt)+'.npy'
+                filename = result_dir+gn.names[quantity]+'DM_'+gn.pars_name(tau,dt,gamma)+'.npy'
             try:
                 pop = np.load(filename)
             except:
@@ -78,6 +80,40 @@ elif quantity=='pop':
     plt.xlabel(r'$q$',size=s_)
     plt.legend(loc='upper left',bbox_to_anchor=(1,1))
     plt.show()
+elif quantity=='CFzz':
+    fig, ax = plt.subplots()
+    end_ = 0
+    step = 1
+    for n,tau in enumerate(list_tau):
+        h_t,J_t,times = ps.find_parameters(tau,steps)
+        N = len(h_t)
+        X = np.arange(0,N)
+        dt = times[1]-times[0]
+        for g,gamma in enumerate(list_gamma):
+            if gamma == 0:
+                filename = result_dir+gn.names[quantity]+'wf_'+gn.pars_name(tau,dt)+'.npy'
+            else:
+                filename = result_dir+gn.names[quantity]+'DM_'+gn.pars_name(tau,dt,gamma)+'.npy'
+            try:
+                CFzz = np.load(filename)
+            except:
+                if input("Compute ",quantity," for tau=",tau," and gamma=",gamma," ?(y/N)")=='y':
+                    args = (h_t,J_t,times,tau,gamma,ps.result_dir,save)
+                    fun = cfs.compute_CF_zz if gamma==0 else ofs.compute_CF_zz
+                    CFzz = fun(args)
+                else:
+                    continue
+            ax.plot(np.arange(1,N-end_,step),CFzz[1:N-end_:step],'*',color=cols[n%len(cols)],ls=style[g%len(style)],label=r'$\gamma$='+"{:.4f}".format(gamma)+r', $\tau$='+str(tau))
+    ax.set_yscale('log')
+    ax.set_xscale('log')
+    ax.set_ylabel(r"$\langle S^z_iS^z_{i+r}\rangle-\langle S^z_i\rangle\langle S^z_{i+r}\rangle$",size=s_)
+    ax.set_xlabel("$r$",size=s_)
+    try:
+        popt,pcov = curve_fit(gn.pow_law,np.arange(1,N-end_,step),CFzz[1:N-end_:step],p0=[1,-2])
+        ax.plot(np.linspace(1,N-end_,1000),pow_law(np.linspace(1,N-end_,1000),*popt),'k-',label='a='+"{:.4f}".format(popt[1]))
+    except:
+        print("Error in fitting")
+    plt.legend()
 
 
 

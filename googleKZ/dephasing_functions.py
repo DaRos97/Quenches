@@ -159,7 +159,7 @@ def compute_zphases(dm,h_t,J_t,type_):
     import matplotlib.pyplot as plt
     N = dm[0][0].shape[0]
     ind_T = -1
-    tau = -1
+    tau = 0
     if type_=='random':
         n_p = 100
         list_ph = np.linspace(0,2*np.pi,n_p,endpoint=True)

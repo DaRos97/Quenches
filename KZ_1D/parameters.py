@@ -2,32 +2,34 @@ import numpy as np
 import pickle 
 from scipy.interpolate import interp1d
 from scipy.interpolate import RectBivariateSpline as RBS
+from pathlib import Path
+import h5py,os
 
-homedir = '/home/dario/Desktop/git/Quenches/KZ_1D/'
-result_dir = homedir+'Data/'
-datadir = homedir + 'extracted_exp_Data/'
+cluster = False if os.getcwd()[6:11]=='dario' else True
 
-z_name = datadir+'z_data_suggested.npy'
-z_labels_name = datadir + 'z_labels.txt'
-xx_name = datadir+'xx_data_suggested.npy'
-xx_labels_name = datadir + 'xx_labels.txt'
-try:
-    z_data = np.load(z_name)
-    with open(z_labels_name,'r') as f:
-        zz = f.read().split(';')
-    z_labels = zz[:-1]
-    xx_data = np.load(xx_name)
-    with open(xx_labels_name,'r') as f:
-        xx = f.read().split(';')
-    xx_labels = xx[:-1]
-except:
+home_dn = '/home/users/r/rossid/KZ_1D/' if cluster else'/home/dario/Desktop/git/Quenches/KZ_1D/'
+result_dn = home_dn + 'results/'
+exp_dn = home_dn + 'experimental_Data/'
+
+hdf5_fn = exp_dn + 'experimental_data.hdf5'
+
+z_dsname = 'z_data_suggested'
+z_labels_dsname = 'z_labels'
+xx_dsname = 'xx_data_suggested'
+xx_labels_dsname = 'xx_labels'
+
+if Path(hdf5_fn).is_file():
+    with h5py.File(hdf5_fn,'r') as f:
+        z_data = np.copy(f[z_dsname])
+        z_labels = f[z_labels_dsname]
+        xx_data = np.copy(f[xx_dsname])
+        xx_labels = f[xx_labels_dsname]
+else:
     print("Extracting parameters of experimental ramp...")
-    exp_dirname = homedir + 'experimental_Data/'
-    params_dataname = exp_dirname + 'params_Dario'
-    f_c_dataname = exp_dirname + 't_to_f_coupler'
-    f_q_dataname = exp_dirname + 't_to_f_qubit'
-
-    with open(params_dataname, 'rb') as f:
+    params_fn = exp_dn + 'params_Dario'
+    f_c_fn = exp_dn + 't_to_f_coupler'
+    f_q_fn = exp_dn + 't_to_f_qubit'
+    with open(params_fn, 'rb') as f:
         exp = pickle.load(f)
     #Change key names 
     st_keys = list(exp.keys())
@@ -37,11 +39,10 @@ except:
         for j in range(len_f): #f_quibit
             data[i*len_f+j] = exp[st_keys[i*len_f+j]]
     #
-    with open(f_c_dataname, 'rb') as f:
+    with open(f_c_fn, 'rb') as f:
         tfc = pickle.load(f)
-    with open(f_q_dataname, 'rb') as f:
+    with open(f_q_fn, 'rb') as f:
         tfq = pickle.load(f)
-
     n_tfc = len(tfc.keys())     #number of times for which f_c is given in the data
     n_tfq = len(tfq.keys())
     tcs = np.linspace(0,6,n_tfc,endpoint=True)
@@ -76,10 +77,10 @@ except:
     #
     args = (data,len_f)
     N = len(data[0]['z'].keys())
-    xx_data = np.zeros((N,n_tfc))
-    xx_labels = list(data[0]['xx'].keys())
     z_data = np.zeros((N,n_tfc))
     z_labels = list(data[0]['z'].keys())
+    xx_data = np.zeros((N,n_tfc))
+    xx_labels = list(data[0]['xx'].keys())
     for i in range(N):
         if 0:   #use first value of z (actually first 2 since it is staggered) and xx for all sites -> translational invariant
             fun_z_f = find_z_f(z_labels[int(0.5*(1+(-1)**i))],*args)
@@ -91,15 +92,11 @@ except:
             xx_data[i,t] = fun_xx_f(fun_fc(tcs[t]),fun_fq(tqs[t]))/2   #1/2 since j_xx = xx/2
             z_data[i,t] = fun_z_f(fun_fc(tcs[t]),fun_fq(tqs[t]))
     #Save for future use
-    np.save(z_name,z_data)
-    np.save(xx_name,xx_data)
-    with open(z_labels_name, 'w') as f:
-        for i in range(len(z_labels)):
-            f.write(str(z_labels[i])+';')
-    with open(xx_labels_name, 'w') as f:
-        for i in range(len(xx_labels)):
-            f.write(str(xx_labels[i])+';')
-    #
+    with h5py.File(hdf5_fn,'w') as f:
+        f.create_dataset(z_dsname,data=z_data)
+        f.create_dataset(z_labels_dsname,data=z_labels)
+        f.create_dataset(xx_dsname,data=xx_data)
+        f.create_dataset(xx_labels_dsname,data=xx_labels)
 
 def find_parameters(tau,steps,plot=False):
     N, steps_0 = z_data.shape   #steps_0 is the number of time steps in the datafile of f_c/f_cq, times 2
@@ -112,8 +109,6 @@ def find_parameters(tau,steps,plot=False):
     for i in range(N):
         h_t.append(interp1d(ttt,z_data[i])(times_0))
         J_t.append(interp1d(ttt,xx_data[i])(times_0))
-    #Compute times of each quench
-    times = np.linspace(0,tau,steps)
     if plot: #plot ramp profiles
         import matplotlib.pyplot as plt
         for n in range(len(list_Tau)):
@@ -128,7 +123,7 @@ def find_parameters(tau,steps,plot=False):
         plt.show()
         exit()
     #
-    return h_t, J_t, times
+    return h_t, J_t
 
 
 

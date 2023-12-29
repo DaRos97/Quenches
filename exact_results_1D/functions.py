@@ -12,9 +12,10 @@ from itertools import combinations
 def H_t(N_,J_,h_,BC_):
     H_ = np.zeros((N_,N_))
     for i in range(N_-1):
-        H_[i,i+1] = H_[i+1,i] = J_/2       #-J_*2
-        H_[i,i] = 2*h_*(-1)**(i+1)
-    H_[N_-1,N_-1] = 2*h_*(-1)**(N_)
+        H_[i,i+1] = H_[i+1,i] = J_       
+        H_[i,i] = h_*(-1)**(i+1)
+    H_[-1,-1] = h_*(-1)**(N_)
+    H_[-1,0] = H_[0,-1] = -J_
     return H_
 
 #Real and linear quenches
@@ -25,7 +26,7 @@ def h_t_linear(t_,Tau_):
 h_t_dic = {'real':h_t_real, 'linear':h_t_linear}
 def J_t_real(t_,Tau_):
     sigma = Tau_*np.tan(1/2)/np.sqrt(np.log(2))
-    return 4*np.exp(-(t_/sigma)**2)
+    return np.exp(-(t_/sigma)**2)
 def J_t_linear(t_,Tau_):
     jj = 1
     try:

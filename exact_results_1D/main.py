@@ -9,7 +9,7 @@ import functions as fs
 argv = sys.argv[1:]
 try:
     opts, args = getopt.getopt(argv, "N:",["type=","dt=","PBC"])
-    N = 20
+    N = 100
     dt = 0.1
     list_Tau = [
             0.05,
@@ -55,19 +55,21 @@ try:
 #            800,
 #            2000
             ]
-    list_Tau = [5,10,20,100]#,200]
+    list_Tau = [10,20,30,40,50,60]#,100]#,200]
     BC = "open"
     type_of_quench = "real" #as opposed to linear
     #
     plot_ramp = False
     compute_fid = 0
-    compute_nex = 0
+    compute_nex = 1
+    if compute_nex:
+        list_Tau = list(np.arange(10,61,step=10))
     compute_pop_ev = 0
     compute_pop_T = 0
     compute_Enex = 0
     compute_en_CP = 0
     compute_S = 0
-    compute_CF_zz = 1
+    compute_CF_zz = 0
     compute_CF_pm = 0
     tot_figs = 3*compute_pop_T + compute_en_CP + compute_fid + compute_nex + compute_Enex + compute_S + compute_CF_zz + compute_CF_pm
     if compute_pop_ev:
@@ -115,7 +117,7 @@ print("Arguments: ",*args)
 times_, psi_ = fs.time_evolve(args)
 #
 fig = plt.figure(figsize=(16,8))
-plt.axis('off')
+#plt.axis('off')
 E_ = np.linalg.eigvalsh(fs.H_t(N,J_t(0,1),h_t(0,1),BC))   #energies of H at time 0 -> gapless point.
 Gap = E_[N//2]-E_[N//2-1]
 cols = ['r','g','y','b','k','m','orange','forestgreen']

@@ -6,11 +6,11 @@ from scipy.optimize import curve_fit
 s_ = 20
 dt = 0.1
 list_Tau = list(np.arange(5,60,step=5))
-list_N = list(np.arange(10,80,step=10))
+list_N = list(np.arange(30,120,step=20))
 BC = "open"
 type_of_quench = "real"
 dirname = "Real_Quench/"
-cols = ['r','g','y','b','k','m','forestgreen']
+cols = ['r','g','y','b','k','m','orange']
 for N in list_N:
     nex = []
     for Tau in list_Tau:

@@ -1,43 +1,35 @@
 import numpy as np
 import scipy
 from scipy.linalg import expm, sqrtm
-from tqdm import tqdm
-
-names = {   't-ev':'time_evolved_DM_',
-            'fid':'fidelity_DM_',
-            'pop':'populatins_DM_',
-        }
-def pars_name(tau,gamma,dt):
-    return "{:.1f}".format(tau)+'_'+"{:.5f}".format(gamma).replace('.',',')+"_"+"{:.5f}".format(dt).replace('.',',')
-
-def H_t(N_,h_,J_,t_):
-    H_ = np.zeros((N_,N_))
-    for i in range(N_-1):
-        H_[i,i+1] = H_[i+1,i] = J_[i][t_]/2
-        H_[i,i] = h_[i][t_]*2
-    H_[-1,-1] = h_[-1][t_]*2
-    H_[-1,0] = H_[0,-1] = -J_[-1][t_]/2   #- for PBC
-    return H_
+import inputs
 
 def Lindblad_i(N_,site):
+    """Lindblad operator actind on 'site'.
+
+    """
     L = np.zeros((N_,N_))
     L[site,site] = 1
     return L
 
 def L_A(A):     #Left action
+    """Left action of superoperator.
+
+    """
     return np.kron(A,np.identity(A.shape[0]))
 def R_A(A):     #Right action
+    """Right action of superoperator.
+
+    """
     return np.kron(np.identity(A.shape[0]),A.T)
 
 def time_evolve(args):
-    h_t,J_t,times,tau,gamma,result_dir,save_data = args
+    h_t,J_t,steps,tau,gamma,result_dir,save_data,cluster = args
     #
-    dt = times[1]-times[0]
-    name_pars = pars_name(tau,gamma,dt) 
     N = len(h_t)
-    steps = len(times)
+    times = np.linspace(0,tau,steps)
+    dt = times[1]-times[0]
     #
-    filename = result_dir+names['t-ev']+name_pars+'.npy'
+    filename = result_dir+inputs.names['t-ev']+'DM_'+inputs.pars_name(tau,dt,gamma)+'.npy'
     try:
         eta = np.load(filename)
     except:
@@ -45,7 +37,7 @@ def time_evolve(args):
         rho = np.zeros((steps,N**2),dtype=complex)
         eta = np.zeros((steps,N,N),dtype=complex)
         #initial state
-        E_0, psi_0 = scipy.linalg.eigh(H_t(N,h_t,J_t,0))
+        E_0, psi_0 = scipy.linalg.eigh(inputs.H_t(N,h_t,J_t,0))
         for m in range(N//2):
             rho[0] += np.reshape(np.outer(psi_0[:,m],psi_0[:,m]),(N**2))
         eta[0] = np.reshape(rho[0],(N,N))
@@ -55,8 +47,8 @@ def time_evolve(args):
             L_i = Lindblad_i(N,i)
             S_L += gamma*(np.matmul(L_A(L_i),R_A(L_i))-1/2*(L_A(L_i) + R_A(L_i)))
         #time evolution
-        for s in tqdm(range(1,steps)):
-            ham = H_t(N,h_t,J_t,s)
+        for s in range(1,steps):
+            ham = inputs.H_t(N,h_t,J_t,s)
             S_H = -1j*2*np.pi*(L_A(ham)-R_A(ham))
             exp_S = expm((S_H+S_L)*dt)      #dt is IMPORTANT !!!
             rho[s] = np.matmul(exp_S,rho[s-1])
@@ -68,30 +60,29 @@ def time_evolve(args):
 
 def compute_fidelity(args):
     #Compute fidelity at all times for each quench time
-    h_t,J_t,times,tau,gamma,result_dir,save_data = args
+    h_t,J_t,steps,tau,gamma,result_dir,save_data,cluster = args
     #
-    dt = times[1]-times[0]
-    name_pars = pars_name(tau,gamma,dt) 
     N = len(h_t)
-    steps = len(times)
-    #Time evolution
-    filename = result_dir+names['fid']+name_pars+'.npy'
+    times = np.linspace(0,tau,steps)
+    dt = times[1]-times[0]
+    #
+    filename = result_dir+inputs.names['fid']+'DM_'+inputs.pars_name(tau,dt,gamma)+'.npy'
     try:
         fid = np.load(filename)
     except:
         #Find time evolved states
-        filename_rho = result_dir+names['t-ev']+name_pars+'.npy'
+        filename_rho = result_dir+inputs.names['t-ev']+'DM_'+inputs.pars_name(tau,dt,gamma)+'.npy'
         try:
             rho = np.load(filename_rho)
         except:
-            args2 = (h_t,J_t,times,tau,gamma,result_dir,1)
+            args2 = (h_t,J_t,tau,gamma,result_dir,True,cluster)
             rho = time_evolve(args2)
         #Compute fidelity
         print("Open fidelity of tau = ",tau,", gamma = ",gamma," ...")
         fid = np.zeros(steps)
         for s in range(steps):
             rho_g = np.zeros((N,N),dtype=complex)     #steps->time, N**2 -> number of components of DM, N -> number of modes
-            E_, psi_gs = np.linalg.eigh(H_t(N,h_t,J_t,s))   #GS at time-step s
+            E_, psi_gs = np.linalg.eigh(inputs.H_t(N,h_t,J_t,s))   #GS at time-step s
             for m in range(N//2):
                 rho_g += np.outer(psi_gs[:,m],psi_gs[:,m])
             D_g, M_g = np.linalg.eigh(rho_g)
@@ -105,41 +96,33 @@ def compute_fidelity(args):
 
 def compute_populations(args):
     #Compute mode population for low energy modes (N//2+-rg) at the critical point
-    h_t,J_t,times,tau,gamma,result_dir,save_data = args
+    h_t,J_t,steps,tau,gamma,result_dir,save_data,cluster = args
     #
-    dt = times[1]-times[0]
-    name_pars = pars_name(tau,gamma,dt) 
     N = len(h_t)
-    steps = len(times)
-    #Time evolution
-    filename = result_dir+names['pop']+name_pars+'.npy'
+    times = np.linspace(0,tau,steps)
+    dt = times[1]-times[0]
+    #
+    filename = result_dir+inputs.names['pop']+'DM_'+inputs.pars_name(tau,dt,gamma)+'.npy'
     try:
         pop = np.load(filename)
     except:
         #Find time evolved states
-        filename_rho = result_dir+names['t-ev']+name_pars+'.npy'
+        filename_rho = result_dir+inputs.names['t-ev']+'DM_'+inputs.pars_name(tau,dt,gamma)+'.npy'
         try:
             rho = np.load(filename_rho)
         except:
-            args2 = (h_t,J_t,times,tau,gamma,home_dirname,1)
+            args2 = (h_t,J_t,tau,gamma,result_dir,True,cluster)
             rho = time_evolve(args2)
         print("Open populations of tau = ",tau,", gamma = ",gamma," ...")
         #
         ind_T = -1
         rho_g = np.zeros((N,N))     #steps->time, N**2 -> number of components of DM, N -> number of modes
-        E_, psi_gs = np.linalg.eigh(H_t(N,h_t,J_t,ind_T))   #GS at time-step s
+        E_, psi_gs = np.linalg.eigh(inputs.H_t(N,h_t,J_t,ind_T))   #GS at time-step s
         for m in range(N//2):
             rho_g += np.outer(psi_gs[:,m],psi_gs[:,m])
         D_g, M_g = np.linalg.eigh(rho_g)
         M_g = psi_gs
         pop = np.real(np.diagonal(np.matmul(np.matmul(M_g.T,rho[ind_T]),M_g)))
-        
-        #sm = np.real(np.diagonal(np.matmul(np.matmul(np.conjugate(M_g).T,rho[ind_T]),M_g)))[:N//2]
-        #bg = np.real(np.diagonal(np.matmul(np.matmul(np.conjugate(M_g).T,rho[ind_T]),M_g)))[N//2:]
-        #
-        #res = list(np.flip(np.sort(bg)))+list(np.flip(np.sort(sm)))
-        #print(np.sum(res))
-
         if save_data:
             np.save(filename,pop)
     return pop
@@ -163,7 +146,13 @@ def compute_zphases(dm,h_t,J_t,type_):
 #        plt.legend()
         plt.show()
 
+def compute_CF_zz(args):
+    pass
 
+def compute_CF_xx(args):
+    pass
+def compute_nex(args):
+    pass
 
 
 
