@@ -1,75 +1,64 @@
 import numpy as np
-import inputs as inp
 import functions as fs
-import system_functions as sf
-from time import time as t
-import sys
-import getopt
+from time import time
+import sys,os
 import random
-######################
-###################### Set the initial parameters
-######################
-####### Outside inputs
-Ti = t()
-argv = sys.argv[1:]
-try:
-    opts, args = getopt.getopt(argv, "N:S:K:",["disp"])
-    N = 0      #inp.J point in phase diagram
-    txt_S = '50'
-    K = 30      #number ok cuts in BZ
-    save_to_file = True
-    disp = True
-except:
-    print("Error in input parameters",argv)
-    exit()
-for opt, arg in opts:
-    if opt in ['-N']:
-        N = int(arg)
-    if opt in ['-S']:
-        txt_S = arg
-    if opt in ['-K']:
-        K = int(arg)
-    if opt == '--disp':
-        disp = True 
 
+machine = 'loc'
+
+save_to_file = True
+
+header = ['J','h','delta','Energy','Gap','L','A','argA','B','argB']
+MaxIter = 3000
+prec_L = 1e-10       #precision required in L maximization
+L_method = 'Brent'
+L_bounds = (0,50)       #bound of Lagrange multiplier
+cutoff_L = 1e-4
+pars_L = (prec_L,L_method,L_bounds)
+cutoff_O = 1e-4
+#phase diagram: staggered magnetic field h
+hi = 10
+hf = 0
+hpts = 100
+h_field_array = [hi+(hf-hi)/(hpts-1)*i for i in range(hpts)]
+#
+index_h = 0      #inp.H point in phase diagram
+Spin = 0.5    #Spin value
+K_points = 30      #number ok cuts in BZ
 J_nn = 1
-h = inp.H[N]
-J = (J_nn,h)
-S_label = {'50':0.5,'36':(np.sqrt(3)-1)/2,'34':0.34,'30':0.3,'20':0.2}
-S = S_label[txt_S]
-print("Using parameters: h=",str(h),", S=",str(S),", K=",str(K))
+h_field = h_field_array[index_h]
+delta = 0.1
+pars = (J_nn,h_field,delta,Spin)
+print("Using parameters: h=",str(h_field),", S=","{:.3f}".format(Spin),", points in BZ=",str(K_points))
 #BZ points
-Nx = K;     Ny = K
+Kx = K_points;     Ky = K_points
+Kx_reference=13;   Ky_reference=13
 #Filenames
-DirName = 'Data/S'+txt_S+'/'
-DataDir = DirName + str(Nx) + '/'
-ReferenceDir = DirName + str(13) + '/'
-csvname = 'J_h=('+str(J_nn)+'_'+'{:5.4f}'.format(h).replace('.','')+').csv'
-csvfile = DataDir + csvname
+#ReferenceDir = fs.get_res_final_dn(Kx_reference,Ky_reference,txt_S,machine)
+filname = fs.get_res_final_fn(pars,Kx,Ky,machine)
 #BZ points
-kxg = np.linspace(0,2*np.pi,Nx)
-kyg = np.linspace(0,np.pi,Ny)
-k_grid = np.zeros((2,Nx,Ny))
-for i in range(Nx):
-    for j in range(Ny):
+kxg = np.linspace(0,np.pi/2,Kx)
+kyg = np.linspace(-np.pi,np.pi,Ky)
+k_grid = np.zeros((2,Kx,Ky))
+for i in range(Kx):
+    for j in range(Ky):
         k_grid[0,i,j] = kxg[i]
         k_grid[1,i,j] = kyg[j]
 #### vectors of 1nn, 2nn and 3nn
-a1 = (1,0)
-a2 = (0,2)
-#### product of lattice vectors with K-matrix
-KM = fs.compute_KM(k_grid,a1,a2)     #large unit cell
+a1 = (2,0)
+a2 = (0,1)
 ########################
 ########################    Initiate routine
 ########################
-Args_O = (KM,K,S,J)
-Args_L = (KM,K,S,J,inp.L_bounds)
-Ti = t()
-#
-P_initial = [0.54,0.11]
+Args_O = (k_grid,pars)
+Args_L = (k_grid,pars,pars_L)
+P_initial = [0.54,0,0.11,0]     #initial mean field parameters (|A|,arg(a),|B|,arg(B))
+"""Can actually use values of previous h point in phase diagram"""
+#Initiate variables
 new_O = P_initial;      old_O_1 = new_O;      old_O_2 = new_O
-new_L = (inp.L_bounds[1]-inp.L_bounds[0])/2 + inp.L_bounds[0];       old_L_1 = 0;    old_L_2 = 0
+new_L = (L_bounds[0]+L_bounds[1])/2;       old_L_1 = 0;    old_L_2 = 0
 #
+initial_time = time()
 step = 0
 continue_loop = True
 while continue_loop:
@@ -91,23 +80,23 @@ while continue_loop:
     for i in range(len(P_initial)):
         new_O[i] = old_O_1[i]*mix_factor + temp_O[i]*(1-mix_factor)
     #Check if L steady solution
-    if np.abs(old_L_2-new_L)/S > inp.cutoff_L:
-        converged_L = 1
+    if np.abs(old_L_2-new_L)/Spin > cutoff_L:
+        converged_L = True
     #Check if O steady solution
-    conv = np.ones(len(P_initial))
     for i in range(len(P_initial)):
-        if np.abs(old_O_1[i]-new_O[i])/S > inp.cutoff_O or np.abs(old_O_2[i]-new_O[i])/S > inp.cutoff_O:
+        if np.abs(old_O_1[i]-new_O[i])/Spin > cutoff_O or np.abs(old_O_2[i]-new_O[i])/Spin > cutoff_O:
             converged_O = 0
             break
         if i == len(P_initial)-1:
-            converged_O = 1
+            converged_O = True
     if converged_O and converged_L:
         continue_loop = False
         new_L = fs.compute_L(new_O,Args_L)
+    #
     if disp:
         print("Step ",step,": ",new_L,*new_O,end='\n')
     #Margin in number of steps
-    if step > inp.MaxIter:
+    if step > MaxIter:
         print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!Exceeded number of steps!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         break
 ######################################################################################################
