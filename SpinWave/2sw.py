@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib import cm
 import sys
 from tqdm import tqdm
 import scipy
@@ -41,31 +42,32 @@ elif 1:   #Theta dependent, 2-site UC, numerical Bogoliubov (only possibility)
     g = np.cos(Kx)+np.cos(Ky)
     #
     J_nn = 1
-    H_list = np.linspace(2,0,11)
+    H_list = np.linspace(2.5,0,26)
     ind_h = 0 if len(sys.argv)<2 else int(sys.argv[1])
     h = H_list[ind_h]
     print("h: ",h,", J: ",J_nn)
     #
-    n_th = 101
-    list_th = np.linspace(-np.pi,np.pi,n_th)
+    n_th = 201
+    list_th = np.linspace(np.pi/2,0,n_th)
     fn0 = "results/energy0_J"+"{:.3f}".format(J_nn)+"_h"+"{:.3f}".format(h)+"_nkx"+str(nkx)+"_nky"+str(nky)+"_th"+str(n_th)+".npy"
-    fn1 = "results/energy1_J"+"{:.3f}".format(J_nn)+"_h"+"{:.3f}".format(h)+"_nkx"+str(nkx)+"_nky"+str(nky)+"_th"+str(n_th)+".npy"
-    save = False
-    if not Path(fn1).is_file():# or not save:
+    fn1 = "results/dispersion_J"+"{:.3f}".format(J_nn)+"_h"+"{:.3f}".format(h)+"_nkx"+str(nkx)+"_nky"+str(nky)+"_th"+str(n_th)+".npy"
+    fn2 = "results/minimaNk_J"+"{:.3f}".format(J_nn)+"_h"+"{:.3f}".format(h)+"_nkx"+str(nkx)+"_nky"+str(nky)+"_th"+str(n_th)+".npy"
+    save = True
+    if not Path(fn0).is_file():# or not save:
         E0_th = np.zeros(n_th)
-        E1_th = np.zeros(n_th)
         J = np.identity(4)
         J[0,0] = J[1,1] = -1
-        J[2,2] = J[3,3] = 1
         #
+        w_th = np.zeros((n_th,nkx,nky,2))
+        min_th = np.zeros((n_th,nkx,nky))
         for i in tqdm(range(n_th)):
-            t = np.sin(list_th[i])**2
+            t = J_nn*np.sin(list_th[i])**2
             r = h*np.cos(list_th[i])
-            E0_th[i] = -3/2*t*J_nn-r
+            E0_th[i] = -3/2*t-r
             #
-            d = (t*J_nn+r/2)*np.ones((nkx,nky))
-            b = J_nn*(2-t)*g/4
-            c = -J_nn*t*g/4
+            d = (t+r/2)*np.ones((nkx,nky))
+            b = (J_nn*2-t)*g/4
+            c = -t*g/4
             z = np.zeros((nkx,nky))
             Nk = np.array([
                 [d,c,z,b],
@@ -75,46 +77,84 @@ elif 1:   #Theta dependent, 2-site UC, numerical Bogoliubov (only possibility)
             ])
             w = np.zeros((nkx,nky,2))
             nnn = 0
+            min_local_eigval = np.zeros((nkx,nky))
             for ikx in range(nkx):
                 for iky in range(nky):
+                    min_local_eigval[ikx,iky] = np.linalg.eigvalsh(Nk[:,:,ikx,iky])[0]
                     try:
                         Ch = scipy.linalg.cholesky(Nk[:,:,ikx,iky])
                     except:
-                        nnn = 1
                         w[ikx,iky] = np.nan
                         continue
                     w[ikx,iky] = np.linalg.eigvalsh(Ch@J@Ch.T.conj())[2:]
-            E1_th[i] = np.sum(w[~np.isnan(w)])/Ns/2 #if nnn==0 else np.nan
+            if 0:   #plot w
+                fig = plt.figure(figsize=(20,20))
+                ax = fig.add_subplot(projection='3d')
+                ax.plot_surface(Kx,Ky,w[:,:,0],cmap=cm.plasma)
+                ax.plot_surface(Kx,Ky,w[:,:,1],cmap=cm.plasma)
+                ax.set_title("theta="+"{:.2f}".format(list_th[i]*180/np.pi)+'°',size=30)
+                plt.show()
+            w_th[i] = w
+            min_th[i] = min_local_eigval
         if save:
             np.save(fn0,E0_th)
-            np.save(fn1,E1_th)
+            np.save(fn1,w_th)
+            np.save(fn2,min_th)
     else:
-        E1_th = np.load(fn1)
         E0_th = np.load(fn0)
+        w_th = np.load(fn1)
+        min_th = np.load(fn2)
 
-if 1:
+if 1:       #Plotting
+    E1_th = np.zeros(n_th)
+    minNk_th = np.zeros(n_th)
+    gap_th = np.zeros(n_th)
+    Ns = w_th[0].shape[0]*w_th[0].shape[1]
+    for i in range(n_th):
+        E1_th[i] = np.sum(w_th[i][~np.isnan(w_th[i])])/Ns/2 #if nnn==0 else np.nan
+#        gap_th[i] = np.min(w_th[i][~np.isnan(w_th[i])])
+        minNk_th[i] = np.min(min_th[i])
+    #
     fig = plt.figure(figsize=(20,20))
     ax = fig.add_subplot()
     E_tot = E0_th+E1_th
+    E_min = np.min(E_tot[~np.isnan(E_tot)])
+    E_max = np.max(E_tot[~np.isnan(E_tot)])
+    #
+    edgecolor = []
+    color1 = []
+    color2 = []
+    i_best = -1
+    for i in range(n_th):
+        if minNk_th[i] > -1e-7:
+            temp1 = minNk_th[i]
+            temp2 = 'none'
+        else:
+            temp1 = np.nan
+            temp2 = 'k'
+        color1.append(temp1)
+        color2.append(temp2)
     try:
-        E_min = np.min(E_tot[~np.isnan(E_tot)])
-        E_max = np.max(E_tot[~np.isnan(E_tot)])
-        ax.plot(list_th,E_tot,c='k',label='total')
+        i_best = color2.index('k')-1
     except:
-        print("All E1s are nan")
-        E_min = np.min(E0_th)
-        E_max = np.max(E0_th)
-        ax.plot(list_th,E0_th,c='k',label='E0')
-    for i in range(3):
+        i_best = n_th-1
+    sc = ax.scatter(list_th,E_tot,c=color1,label='total',cmap=cm.plasma_r,marker='o',s=100)
+    ax.scatter(list_th,E_tot,c=color2,marker='o',s=100,alpha=0.1,label='unphysical states')
+    for i in range(1,3):
         th = -np.pi/2+np.pi/2*i
         ax.plot([th,th],[E_min,E_max],lw=0.5,c='b')
-    ax.set_xlabel(r"$\theta$",size=20)
-    ax.set_ylabel(r"$E/N_s$",size=20)
-    ax.set_title("h="+"{:.3f}".format(h)+", J="+"{:.3f}".format(J_nn),size=30)
-    plt.legend(fontsize=20)
+    ax.plot([list_th[i_best],list_th[i_best]],[E_min,E_max],lw=0.5,c='r')
+    ax.set_xlabel(r"$\theta$"+" angle of quantization axis",size=30)
+    ax.set_ylabel("GS energy per site",size=30)
+    ax.set_xticks([0,list_th[i_best],np.pi/2],["$0°=z-AFM$","{:.2f}".format(list_th[i_best]*180/np.pi)+'°',r"$90°=\hat{x}$"])
+    ax.xaxis.set_tick_params(labelsize=20)
+    ax.set_title(r"$h=$"+"{:.3f}".format(h)+r", $J=$"+"{:.3f}".format(J_nn),size=30)
+#    plt.legend(fontsize=20)
+    cb = plt.colorbar(sc)
+    cb.set_label(label='Gap',size=30)
+    if 1:
+        plt.savefig("figures/"+fn0[8:-4]+'.png')
     if 0:
-        plt.savefig("figures/"+fn0[9:-4]+'.png')
-    else:
         plt.show()
 
 
