@@ -33,6 +33,16 @@ if 0:   #theta independent, t=0
     print(E0,E1)
     print("Total: ",E0+E1)
 elif 1:   #Theta dependent, 2-site UC, numerical Bogoliubov (only possibility)
+    """Here we compute the GS energy of XY+staggered Z using Holstein-Primakof.
+    We have a 2-tie UC.
+    We take J_nn=1 and vary the staggered field 'h' from high values to 0 (phase transition at h=2J from gapped (h>2J) to gapless (h<2J)).
+    For each (J_nn,h) we compute the GS energy for n_th values of angle of quantization axis from th=0 (AFM in z) to th=pi/2 (FM in x).
+    For each th we compute the Hamiltonian and do the Bogoliubov transformation (BT) numerically at each k of the BZ.
+    For some values of (J_nn,h,th) the BT is not possible for all k: for example at (1,h,pi/2) the Hamiltonian at k=0 does not allow the BT. This
+    is because the excitation spectrum is gapless. There are also situations where the spectrum ha NEGATIVE eigenvalues. This cannot be since we
+    are working with bosons, and a negative eigenvalue would mean that the bosons would all condense there and break the n<<1 constraint of
+    Holstein-Primakof. We then discard all solutions which have negative eigenvalues.
+    """
     nkx = 100
     nky = 2*nkx
     Ns = nkx*nky
@@ -76,7 +86,6 @@ elif 1:   #Theta dependent, 2-site UC, numerical Bogoliubov (only possibility)
                 [b,z,c,d]
             ])
             w = np.zeros((nkx,nky,2))
-            nnn = 0
             min_local_eigval = np.zeros((nkx,nky))
             for ikx in range(nkx):
                 for iky in range(nky):
@@ -88,12 +97,14 @@ elif 1:   #Theta dependent, 2-site UC, numerical Bogoliubov (only possibility)
                         continue
                     w[ikx,iky] = np.linalg.eigvalsh(Ch@J@Ch.T.conj())[2:]
             if 0:   #plot w
+                print(E0_th[-1],np.sum(w[~np.isnan(w)])/Ns/2,np.min(w[~np.isnan(w)]))
                 fig = plt.figure(figsize=(20,20))
                 ax = fig.add_subplot(projection='3d')
                 ax.plot_surface(Kx,Ky,w[:,:,0],cmap=cm.plasma)
-                ax.plot_surface(Kx,Ky,w[:,:,1],cmap=cm.plasma)
+#                ax.plot_surface(Kx,Ky,w[:,:,1],cmap=cm.plasma_r)
                 ax.set_title("theta="+"{:.2f}".format(list_th[i]*180/np.pi)+'°',size=30)
                 plt.show()
+                #exit()
             w_th[i] = w
             min_th[i] = min_local_eigval
         if save:
@@ -105,15 +116,27 @@ elif 1:   #Theta dependent, 2-site UC, numerical Bogoliubov (only possibility)
         w_th = np.load(fn1)
         min_th = np.load(fn2)
 
-if 1:       #Plotting
+if 1:       #Plotting energy vs theta
     E1_th = np.zeros(n_th)
     minNk_th = np.zeros(n_th)
     gap_th = np.zeros(n_th)
     Ns = w_th[0].shape[0]*w_th[0].shape[1]
     for i in range(n_th):
-        E1_th[i] = np.sum(w_th[i][~np.isnan(w_th[i])])/Ns/2 #if nnn==0 else np.nan
-#        gap_th[i] = np.min(w_th[i][~np.isnan(w_th[i])])
-        minNk_th[i] = np.min(min_th[i])
+        if np.min(min_th[i]) < -1e-7:
+            not_good = True
+        else:
+            not_good = False
+        try:
+            E1_th[i] = np.sum(w_th[i][~np.isnan(w_th[i])])/Ns/2 #if nnn==0 else np.nan
+            if not not_good:
+                gap_th[i] = np.min(w_th[i][~np.isnan(w_th[i])])
+            else:
+                gap_th[i] = np.nan
+        except:     #w_th all nan
+            print("aaaaaaa",i)
+            E1_th[i] = 0
+            gap_th[i] = np.nan
+#        minNk_th[i] = np.min(min_th[i])
     #
     fig = plt.figure(figsize=(20,20))
     ax = fig.add_subplot()
@@ -126,8 +149,8 @@ if 1:       #Plotting
     color2 = []
     i_best = -1
     for i in range(n_th):
-        if minNk_th[i] > -1e-7:
-            temp1 = minNk_th[i]
+        if not np.isnan(gap_th[i]):
+            temp1 = gap_th[i]
             temp2 = 'none'
         else:
             temp1 = np.nan
@@ -152,9 +175,12 @@ if 1:       #Plotting
 #    plt.legend(fontsize=20)
     cb = plt.colorbar(sc)
     cb.set_label(label='Gap',size=30)
-    if 1:
-        plt.savefig("figures/"+fn0[8:-4]+'.png')
     if 0:
+        plt.savefig("figures/"+fn0[8:-4]+'.png')
+    if 1:
+        print(E0_th)
+        print(E1_th)
+        print(E_tot)
         plt.show()
 
 
