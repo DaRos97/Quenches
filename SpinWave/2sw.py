@@ -49,7 +49,8 @@ elif 1:   #Theta dependent, 2-site UC, numerical Bogoliubov (only possibility)
     list_kx = np.linspace(0,np.pi,nkx,endpoint=False)
     list_ky = np.linspace(-np.pi,np.pi,nky,endpoint=False)
     Kx,Ky = np.meshgrid(list_ky,list_kx)
-    g = np.cos(Kx)+np.cos(Ky)
+#    g = np.cos(Kx)+np.cos(Ky)
+    g = 2*(np.cos(Kx)+np.cos(Ky))
     #
     J_nn = 1
     H_list = np.linspace(2.5,0,26)
@@ -57,27 +58,33 @@ elif 1:   #Theta dependent, 2-site UC, numerical Bogoliubov (only possibility)
     h = H_list[ind_h]
     print("h: ",h,", J: ",J_nn)
     #
-    n_th = 201
+    n_th = 51
     list_th = np.linspace(np.pi/2,0,n_th)
     fn0 = "results/energy0_J"+"{:.3f}".format(J_nn)+"_h"+"{:.3f}".format(h)+"_nkx"+str(nkx)+"_nky"+str(nky)+"_th"+str(n_th)+".npy"
     fn1 = "results/dispersion_J"+"{:.3f}".format(J_nn)+"_h"+"{:.3f}".format(h)+"_nkx"+str(nkx)+"_nky"+str(nky)+"_th"+str(n_th)+".npy"
     fn2 = "results/minimaNk_J"+"{:.3f}".format(J_nn)+"_h"+"{:.3f}".format(h)+"_nkx"+str(nkx)+"_nky"+str(nky)+"_th"+str(n_th)+".npy"
-    save = True
+    save = 0#True
     if not Path(fn0).is_file():# or not save:
         E0_th = np.zeros(n_th)
         J = np.identity(4)
         J[0,0] = J[1,1] = -1
+        S = 1/2
         #
         w_th = np.zeros((n_th,nkx,nky,2))
         min_th = np.zeros((n_th,nkx,nky))
         for i in tqdm(range(n_th)):
-            t = J_nn*np.sin(list_th[i])**2
+#            t = J_nn*np.sin(list_th[i])**2
+            t = np.sin(list_th[i])**2
             r = h*np.cos(list_th[i])
-            E0_th[i] = -3/2*t-r
+#            E0_th[i] = -3/2*t-r
+            E0_th[i] = -2*J_nn*t*S**2-J_nn*t-r*S-r/2
             #
-            d = (t+r/2)*np.ones((nkx,nky))
-            b = (J_nn*2-t)*g/4
-            c = -t*g/4
+#            d = (t+r/2)*np.ones((nkx,nky))
+            d = (J_nn*t+r/2)*np.ones((nkx,nky))
+#            b = (J_nn*2-t)*g/4
+            b = -J_nn/4*S*(t-2)*g
+#            c = -t*g/4
+            c = -J_nn*S/4*t*g
             z = np.zeros((nkx,nky))
             Nk = np.array([
                 [d,c,z,b],
