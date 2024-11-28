@@ -16,7 +16,7 @@ We take J_nn=+1 or -1 to have AFM and FM case and vary the staggered field 'h' f
 We perform the HP transformation around the quantization axis defined by the classical orientation of the magnetization.
 We compute the Hamiltonian and do the Bogoliubov transformation (BT) numerically at each k of the BZ.
 """
-nkx = nky = 400
+nkx = nky = 200
 Ns = nkx*nky
 #BZ of 2 site unit cell
 gridk = np.zeros((nkx,nky,2))
@@ -26,8 +26,8 @@ for i1 in range(nkx):
         gridk[i1,i2] = np.array([-np.pi,0]) + i1/nkx*np.array([np.pi,-np.pi]) + i2/nky*np.array([np.pi,np.pi])
         Gamma[i1,i2] = np.cos(gridk[i1,i2,0]) + np.cos(gridk[i1,i2,1])
 #
-J_nn = 1        #J_nn = 1 -> AFM, J_nn = -1 -> FM
-delta = 1       #parameter for ZZ
+J_nn = -1        #J_nn = 1 -> AFM, J_nn = -1 -> FM
+delta = 0       #parameter for ZZ
 sign = 1 if J_nn>0 else -1
 tit = "FM" if J_nn < 0 else "AFM"
 S = 0.5
@@ -37,7 +37,7 @@ def fun_E0(J_nn,S,th,h):
 #    return -2*abs(J_nn)*S*np.sin(th)**2*(S+1)-h*np.cos(th)*(S+1/2)
     return 2*S*J_nn*(-sign*np.sin(th)**2*(S+1)-2*delta*np.cos(th)**2) - h*np.cos(th)*(2*S+1/2)
 def fun_th(h,J_nn,S):
-    return 0 if h>2*abs(J_nn) else np.arccos(h/4/abs(J_nn)/S)
+    return 0 if h>2*abs(J_nn) else np.arccos(h/4/abs(J_nn)/S/(1+delta))
 
 fn = "results/result_J"+"{:.3f}".format(J_nn)+"_d"+"{:.3f}".format(delta)+"_h"+"{:.3f}".format(H_list[0])+"-"+"{:.3f}".format(H_list[-1])+"_"+str(n_H)+"_nkx"+str(nkx)+"_nky"+str(nky)+".npy"
 save = True
@@ -46,15 +46,13 @@ if not Path(fn).is_file():# or not save:
     w_h = np.zeros((n_H,nkx,nky,4))
     for ind_h in range(n_H):
         h = H_list[ind_h]
-        th = fun_th(h,J_nn,S) #if delta==0 else 0
-        print("h: ","{:.2f}".format(h),", J: ",J_nn,", delta: ",delta)
+        ###
+        th = 0 if (delta==1 and sign==1) else fun_th(h,J_nn,S)
+        print("h: ","{:.2f}".format(h),", J: ",J_nn,", delta: ",delta,", theta: ",th/np.pi*180)
         #
         J_ = np.identity(4)
         J_[0,0] = J_[1,1] = -1
         #
-        #p1 = (h/2*np.cos(th)+2*abs(J_nn)*S*(np.sin(th)**2+delta))*np.ones((nkx,nky))
-        #p2 = J_nn*S/2*np.sin(th)**2*Gamma
-        #p3 = J_nn*S/2*(np.sin(th)**2-2)*Gamma
         p1 = 2*J_nn*S*(sign*np.sin(th)**2+delta*np.cos(th)**2)*np.ones((nkx,nky)) + h*np.cos(th)/2
         p2 = Gamma*J_nn*S/2*(-np.cos(th)**2-sign*delta*np.sin(th)**2+1)
         p3 = Gamma*J_nn*S/2*(-np.cos(th)**2-sign*delta*np.sin(th)**2-1)
