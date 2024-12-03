@@ -11,7 +11,7 @@ J_nn = 1
 
 print("h=",h,", J=",J_nn)
 
-if 1:   #Theta dependent, 2-site UC, numerical Bogoliubov (only possibility)
+if 0:   #Theta dependent, 2-site UC, numerical Bogoliubov (only possibility)
     nkx = 70
     nky = 2*nkx
     Ns = nkx*nky
@@ -125,7 +125,7 @@ elif 0: #Theta dependent, 1-site UC
         omega = (2*t-g)*(np.cosh(u)-np.sinh(u))**2
         #Now some points k don't have a well defined Bogoliubov transformation
         E1_th[i] = omega[~np.isnan(omega)].sum()/2/Ns
-        if 0:   #plot dispersion
+        if 1:   #plot dispersion
             fig = plt.figure()
             ax = fig.add_subplot(projection='3d')
             ax.plot_surface(Kx,Ky,omega.T)
@@ -153,8 +153,8 @@ elif 0: #Theta independent, 1-site UC, Q-axis along y, numerical bogoliubov
     print("Tot:",E0+E1)
     exit()
 else: #Theta independent, 1-site UC, Q-axis along y
-    nkx = 10000
-    nky = 10000
+    nkx = 500
+    nky = 500
     Ns = nkx*nky
     list_kx = np.linspace(-np.pi,np.pi,nkx)
     list_ky = np.linspace(-np.pi,np.pi,nky)
@@ -163,6 +163,15 @@ else: #Theta independent, 1-site UC, Q-axis along y
     Kx,Ky = np.meshgrid(list_kx,list_ky)
     g = np.cos(Kx)+np.cos(Ky)
     E1 = np.sqrt(1-g/2).sum()/Ns
+
+    #
+    S = 2*g
+    u = 1/2*np.arctanh(S/8/(1-S/8))
+    w = 4*(np.cosh(u)-np.sinh(u))**21
+    fig = plt.figure()
+    ax = fig.add_subplot(projection='3d')
+    ax.plot_surface(Kx,Ky,w)
+    plt.show()
     print("E0:",E0)
     print("E1:",E1)
     print("Tot:",E0+E1)

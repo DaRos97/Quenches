@@ -10,29 +10,39 @@ import scipy
 from pathlib import Path
 
 """
-Here we compute the GS energy of XY+staggered Z using Holstein-Primakof.
-We have a 2-site UC.
+Here we compute the GS energy of XX+YY+delta*ZZ + staggered Z using Holstein-Primakof.
+We have a 2-site UC always (except for FM and h=0).
 We take J_nn=+1 or -1 to have AFM and FM case and vary the staggered field 'h' from high values to 0 (phase transition at h=2|J| from gapped (h>2|J|) to gapless (0<h<2|J|)).
 We perform the HP transformation around the quantization axis defined by the classical orientation of the magnetization.
-We compute the Hamiltonian and do the Bogoliubov transformation (BT) numerically at each k of the BZ.
+We compute the Hamiltonian and do the Bogoliubov triansformation (BT) numerically at each k of the BZ.
+We do not consider the points where the Bogoliubov transformation is not possible, which should be only k=0.
 """
-nkx = nky = 200
-Ns = nkx*nky
+L = 100
+Ns = L*L
+nkx = L//2
+nky = L
+b1 = np.array([np.pi,np.pi])
+b2 = np.array([0,2*np.pi])
+#nkx = nky = 100
+#Ns = nkx*nky
 #BZ of 2 site unit cell
 gridk = np.zeros((nkx,nky,2))
 Gamma = np.zeros((nkx,nky))
 for i1 in range(nkx):
     for i2 in range(nky):
-        gridk[i1,i2] = np.array([-np.pi,0]) + i1/nkx*np.array([np.pi,-np.pi]) + i2/nky*np.array([np.pi,np.pi])
+        d = 2*np.pi/L
+        gx = -np.pi + d*(i1+i2//2+1)
+        gy = i2//2*d - d*i1
+        gridk[i1,i2] = np.array([gx,gy])
         Gamma[i1,i2] = np.cos(gridk[i1,i2,0]) + np.cos(gridk[i1,i2,1])
 #
 J_nn = -1        #J_nn = 1 -> AFM, J_nn = -1 -> FM
-delta = 0       #parameter for ZZ
-sign = 1 if J_nn>0 else -1
+delta = 1       #parameter for ZZ
+sign = np.sign(J_nn)
 tit = "FM" if J_nn < 0 else "AFM"
 S = 0.5
 n_H = 26
-H_list = np.linspace(2.5,0,n_H)
+H_list = np.linspace(0,2.5,n_H)
 def fun_E0(J_nn,S,th,h):
 #    return -2*abs(J_nn)*S*np.sin(th)**2*(S+1)-h*np.cos(th)*(S+1/2)
     return 2*S*J_nn*(-sign*np.sin(th)**2*(S+1)-2*delta*np.cos(th)**2) - h*np.cos(th)*(2*S+1/2)
@@ -40,9 +50,9 @@ def fun_th(h,J_nn,S):
     return 0 if h>2*abs(J_nn) else np.arccos(h/4/abs(J_nn)/S/(1+delta))
 
 fn = "results/result_J"+"{:.3f}".format(J_nn)+"_d"+"{:.3f}".format(delta)+"_h"+"{:.3f}".format(H_list[0])+"-"+"{:.3f}".format(H_list[-1])+"_"+str(n_H)+"_nkx"+str(nkx)+"_nky"+str(nky)+".npy"
-save = True
-plot_temp = False
-if not Path(fn).is_file():# or not save:
+save = False
+plot_temp = True
+if not Path(fn).is_file() or plot_temp:
     w_h = np.zeros((n_H,nkx,nky,4))
     for ind_h in range(n_H):
         h = H_list[ind_h]
@@ -69,7 +79,7 @@ if not Path(fn).is_file():# or not save:
                     Ch = scipy.linalg.cholesky(Nk[:,:,ikx,iky])
 #                    a = fakearg
                 except:
-                    print("a")
+                    print("One non-Bogoliubov point")
                     if 0:
                         w_h[ind_h,ikx,iky] = np.linalg.eigvalsh(Nk[:,:,ikx,iky])[:]
                     else:
@@ -91,10 +101,13 @@ if not Path(fn).is_file():# or not save:
 #            ax = fig.add_subplot(224,projection='3d')
             ax.plot_surface(gridk[:,:,0],gridk[:,:,1],w_h[ind_h,:,:,3],cmap=cm.plasma)
             #
+            ax.set_xlabel('Kx')
+            ax.set_ylabel('Ky')
+            ax.set_aspect('equalxy')
             ax.set_title(tit+r" ,$\Delta=$"+str(delta),size=30)
             fig.tight_layout()
             plt.show()
-            #exit()
+            exit()
     if save:
         np.save(fn,w_h)
 else:
