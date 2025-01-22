@@ -1,12 +1,21 @@
 import numpy as np
-import system_functions as sf
 from scipy import linalg as LA
 from scipy.optimize import minimize_scalar
-from scipy.optimize import minimize
 from scipy.interpolate import RectBivariateSpline as RBS
 from pathlib import Path
 import csv
 import os
+import itertools
+
+def get_pars(index):
+    lJnn = [1,]
+    lh_field = np.linspace(10,0,101)
+    ldelta = np.linspace(0,1,11)
+    lSpin = [0.5,(np.sqrt(3)+1)/2,0.3,0.2]
+    lKpoints = [13,27,50]
+    ll = [lJnn,lh_field,ldelta,lSpin,lKpoints]
+    combs = list(itertools.product(*ll))
+    return combs[index]
 #Libraries needed only for debug and plotting -> not used in the cluster
 #from colorama import Fore
 #import matplotlib.pyplot as plt

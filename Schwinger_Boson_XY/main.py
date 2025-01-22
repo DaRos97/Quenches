@@ -9,6 +9,8 @@ machine = 'loc'
 save_to_file = True
 
 header = ['J','h','delta','Energy','Gap','L','A','argA','B','argB']
+
+"""Parameters of minimization"""
 MaxIter = 3000
 prec_L = 1e-10       #precision required in L maximization
 L_method = 'Brent'
@@ -16,45 +18,34 @@ L_bounds = (0,50)       #bound of Lagrange multiplier
 cutoff_L = 1e-4
 pars_L = (prec_L,L_method,L_bounds)
 cutoff_O = 1e-4
-#phase diagram: staggered magnetic field h
-hi = 10
-hf = 0
-hpts = 100
-h_field_array = [hi+(hf-hi)/(hpts-1)*i for i in range(hpts)]
-#
-index_h = 0      #inp.H point in phase diagram
-Spin = 0.5    #Spin value
-K_points = 30      #number ok cuts in BZ
-J_nn = 1
-h_field = h_field_array[index_h]
-delta = 0.1
+"""Parameters of phase diagram"""
+index = 0 if len(sys.argv)<2 else int(sys.argv[1])
+J_nn, h_field, delta, Spin, K_points = fs.get_pars(index)
 pars = (J_nn,h_field,delta,Spin)
 print("Using parameters: h=",str(h_field),", S=","{:.3f}".format(Spin),", points in BZ=",str(K_points))
-#BZ points
-Kx = K_points;     Ky = K_points
-Kx_reference=13;   Ky_reference=13
 #Filenames
 #ReferenceDir = fs.get_res_final_dn(Kx_reference,Ky_reference,txt_S,machine)
 filname = fs.get_res_final_fn(pars,Kx,Ky,machine)
-#BZ points
+"""Define the BZ and the lattice vectors"""
+Kx = K_points;     Ky = K_points
+Kx_reference=13;   Ky_reference=13
 kxg = np.linspace(0,np.pi/2,Kx)
 kyg = np.linspace(-np.pi,np.pi,Ky)
 k_grid = np.zeros((2,Kx,Ky))
-for i in range(Kx):
+for i in range(Kx):     #better way
     for j in range(Ky):
         k_grid[0,i,j] = kxg[i]
         k_grid[1,i,j] = kyg[j]
-#### vectors of 1nn, 2nn and 3nn
 a1 = (2,0)
 a2 = (0,1)
 ########################
 ########################    Initiate routine
 ########################
+"""Initiate self consistent routine"""
 Args_O = (k_grid,pars)
 Args_L = (k_grid,pars,pars_L)
 P_initial = [0.54,0,0.11,0]     #initial mean field parameters (|A|,arg(a),|B|,arg(B))
 """Can actually use values of previous h point in phase diagram"""
-#Initiate variables
 new_O = P_initial;      old_O_1 = new_O;      old_O_2 = new_O
 new_L = (L_bounds[0]+L_bounds[1])/2;       old_L_1 = 0;    old_L_2 = 0
 #

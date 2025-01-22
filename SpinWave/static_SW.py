@@ -23,9 +23,6 @@ nkx = L//2
 nky = L
 b1 = np.array([np.pi,np.pi])
 b2 = np.array([0,2*np.pi])
-#nkx = nky = 100
-#Ns = nkx*nky
-#BZ of 2 site unit cell
 gridk = np.zeros((nkx,nky,2))
 Gamma = np.zeros((nkx,nky))
 for i1 in range(nkx):
