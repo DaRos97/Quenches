@@ -2,6 +2,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 
+"""
+Here we compute the lowest energy configuration for the classical spin model varying J2 and h.
+This is given by minimizing a function of 5 angles: orientation of two spins in the unit cell (3 angles),
+rotation angle of translation in the 2 directions. This is equivalent to a RMO construction
+considering only translations and the U(1) symmetry of the Hamiltonian.
+"""
+
 if 0:   #energy of simply twisting two spins
     J1 = 1
 
