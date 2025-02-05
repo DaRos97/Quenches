@@ -8,8 +8,9 @@ from tqdm import tqdm
 from scipy.linalg import expm
 import scipy
 
-plot_fidelity = 1
-plot_populations = 1
+plot_fidelity = 0
+plot_populations = 0
+plot_correlators = 1
 use_time_evolved = 1
 
 g_ = 10 #MHz
@@ -20,7 +21,9 @@ time_step = full_time_ramp/1000
 #time_step = 0.001    #time step of ramp
 
 N = 42  #sites
-Nt = 2000 #time steps after ramp
+Nt = 401#2000 #time steps after ramp
+Nomega = 2001
+omega = np.linspace(-250,250,Nomega)
 
 stop_ratio_list = np.linspace(0.1,1,10)
 time_list = np.linspace(0,full_time_measure,Nt)
@@ -111,55 +114,76 @@ if plot_populations:
     plt.savefig("figures/ramp_populations_"+str(N)+'_'+"{:.2f}".format(full_time_ramp)+'.png')
 #    plt.show()
 
-fig = plt.figure(figsize=(20, 12))
-txt_title = 'time evolved wavefunction' if use_time_evolved else 'ground state wavefunction'
-plt.suptitle("Total ramp time: "+str(int(full_time_ramp*1000))+" ns, "+txt_title)
-print("Correlation functions")
-for i_sr in tqdm(range(len(stop_ratio_list))):
-    stop_ratio = stop_ratio_list[i_sr]
-    i_t = int(time_steps*stop_ratio)-1
-    H = compute_H(g[i_t],h[i_t],N)
-    E_GS,psi_GS = np.linalg.eigh(H)
-    evecs = psi_GS
-    if use_time_evolved:
-        pop_k = pop[i_t]
+if plot_correlators:
+    corr_fn = "data/correlators_"+str(N)+'_'+"{:.2f}".format(full_time_ramp)+'_'+"{:.2f}".format(full_time_measure)+'.npy'
+    if not Path(corr_fn).is_file():
+        print("Computing correlation function: ")
+        ZZ_fts = np.zeros((len(stop_ratio_list),N,Nomega),dtype=complex)
+        for i_sr in tqdm(range(len(stop_ratio_list))):
+            stop_ratio = stop_ratio_list[i_sr]
+            #stop_ratio = 1
+            i_t = int(time_steps*stop_ratio)-1
+            H = compute_H(g[i_t],h[i_t],N)
+            E_GS,psi_GS = np.linalg.eigh(H)
+            evecs = psi_GS
+            if use_time_evolved:
+                pop_k = pop[i_t]
+            else:
+                pop_k = np.ones(N)
+                pop_k[N//2:] *= 0
+            #Time evolution measurement
+            U_1 = [np.exp(1j*2*np.pi*E_GS[:]*time) for time in time_list]
+            U_2 = [np.exp(-1j*2*np.pi*E_GS[:]*time) for time in time_list]
+            #
+            rho1 = np.array([np.einsum('ik,kj,k,k->ij',evecs[:,:],evecs[:,:].T.conj(),U_1[i_t],pop_k,optimize=True) for i_t in range(Nt)])
+            rho2 = np.array([np.einsum('ik,kj,k,k->ij',evecs[:,:],evecs[:,:].T.conj(),U_2[i_t],1-pop_k,optimize=True) for i_t in range(Nt)])
+            #Correlator in space-time
+            ZZ = np.zeros((N,Nt),dtype=complex)
+            for i in range(N):
+                ZZ[i] = np.array([2*1j*np.imag(rho1[i_t,i,0]*rho2[i_t,i,0]) for i_t in range(Nt)])
+            if 0:   #Fourier transform in 2d : momentum-frequency
+                ZZ_ft = np.fft.fftshift(np.fft.fft2(ZZ)) / np.sqrt(N*Nt)
+                kx = np.fft.fftshift(np.fft.fftfreq(N, d=1)) * 2 * np.pi
+                omega = np.fft.fftshift(np.fft.fftfreq(Nt, d=full_time_measure / Nt))
+            else:   #Fourier transform discrete in k, continuous in omega
+                fft_kt = np.zeros((N,Nt),dtype=complex)
+                for it in range(Nt):
+                    fft_kt[:,it] = np.fft.fftshift(np.fft.fft(ZZ[:,it]))
+                for io in range(Nomega):
+                    for it in range(Nt):
+                        ZZ_fts[i_sr,:,io] += np.exp(1j*2*np.pi*omega[io]*time_list[it])*fft_kt[:,it]
+        np.save(corr_fn,ZZ_fts)
     else:
-        pop_k = np.ones(N)
-        pop_k[N//2:] *= 0
-    #Time evolution measurement
-    U_1 = [np.exp(1j*2*np.pi*E_GS[:]*time) for time in time_list]
-    U_2 = [np.exp(-1j*2*np.pi*E_GS[:]*time) for time in time_list]
-    #
-    rho1 = np.array([np.einsum('ik,kj,k,k->ij',evecs[:,:],evecs[:,:].T.conj(),U_1[i_t],pop_k,optimize=True) for i_t in range(Nt)])
-    rho2 = np.array([np.einsum('ik,kj,k,k->ij',evecs[:,:],evecs[:,:].T.conj(),U_2[i_t],1-pop_k,optimize=True) for i_t in range(Nt)])
-    #Correlator in space-time
-    ZZ = np.zeros((N,Nt),dtype=complex)
-    for i in range(N):
-        ZZ[i] = np.array([2*1j*np.imag(rho1[i_t,i,0]*rho2[i_t,i,0]) for i_t in range(Nt)])
-    #Fourier transform -> momentum-frequency
-    ZZ_ft = np.fft.fftshift(np.fft.fft2(ZZ)) / np.sqrt(N*Nt)
-    kx = np.fft.fftshift(np.fft.fftfreq(N, d=1)) * 2 * np.pi
-    omega = np.fft.fftshift(np.fft.fftfreq(Nt, d=full_time_measure / Nt))
+        ZZ_fts = np.load(corr_fn)
     #Plot
-    ax = fig.add_subplot(2,5,i_sr+1)
-    pm = ax.pcolormesh(kx, omega, np.abs(ZZ_ft).T, shading='auto', cmap='magma')
-    if i_sr in [4,9]:
-        label_cm = 'Magnitude of Fourier Transform'
-    else:
-        label_cm = ''
-    plt.colorbar(pm,label=label_cm)
-    ax.set_ylim(-50,50)
-    if i_sr>4:
-        ax.set_xlabel('Momentum ($k_x$)')
-    if i_sr in [0,5]:
-        ax.set_ylabel('Frequency $\omega$ (MHz)')
-    ax.set_title('Stop ratio '+"{:.1f}".format(stop_ratio))
 
-fig.tight_layout()
-txt_wf = 'ramp_WF' if use_time_evolved else 'GS_WF'
-plt.savefig("figures/ZZ_FFT_"+txt_wf+'_'+str(N)+'_'+"{:.2f}".format(full_time_ramp)+'.png')
-#plt.show()
-#    exit()
+    fig = plt.figure(figsize=(17, 8))
+    txt_title = 'time evolved wavefunction' if use_time_evolved else 'ground state wavefunction'
+    plt.suptitle("Total ramp time: "+str(int(full_time_ramp*1000))+" ns, "+txt_title)
+    kx = np.fft.fftshift(np.fft.fftfreq(N,d=1))
+    for i_sr in range(len(stop_ratio_list)):
+        #Plot
+        ax = fig.add_subplot(2,5,i_sr+1)
+    #    ax = fig.add_subplot()
+        pm = ax.pcolormesh(kx, omega, np.abs(ZZ_fts[i_sr]).T, shading='auto', cmap='magma')
+        if i_sr in [4,9]:
+            label_cm = 'Magnitude of Fourier Transform'
+        else:
+            label_cm = ''
+        plt.colorbar(pm,label=label_cm)
+        ax.set_ylim(-50,50)
+        if i_sr>4:
+            ax.set_xlabel('Momentum ($k_x$)')
+        if i_sr in [0,5]:
+            ax.set_ylabel('Frequency $\omega$ (MHz)')
+        ax.set_title('Stop ratio '+"{:.1f}".format(stop_ratio))
+    #    plt.show()
+
+    fig.tight_layout()
+    txt_wf = 'ramp_WF' if use_time_evolved else 'GS_WF'
+    plt.savefig("figures/"+corr_fn[5:-4]+'.png')
+    plt.show()
+    #    exit()
 
 
 
