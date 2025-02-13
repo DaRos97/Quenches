@@ -65,6 +65,14 @@ def compute_populations2(psi_t,psi_GS):
     result = np.real(np.diagonal(beta.T.conj()@alpha@alpha.T.conj()@beta))
     return result
 
+def get_Gij(alpha,beta,U):
+    """Compute correlator <c_i(t)^\dag c_j(0)>"""
+    return np.array([(alpha@alpha.T.conj()@beta@np.diag(U_t[i_t])@beta.T.conj()).T for i_t in range(len(U))])
+
+def get_Hij(alpha,beta,U):
+    """Compute correlator <c_i(t) c_j(0)^\dag>"""
+    return np.array([N/2*beta@np.diag(U_t[i_t].conj())@beta.T.conj() - beta@np.diag(U_t[i_t].conj())@beta.T.conj()@alpha@alpha.T.conj() for i_t in range(len(U))])
+
 stop_ratio = 1
 ramp_time = full_time_ramp
 time_steps = int(ramp_time//time_step)   #steps in time evolution
@@ -107,14 +115,6 @@ def time_evolve(alpha,beta,e,t):
     result = np.einsum('iq,ir,r,jr->jq',alpha,beta.conj(),np.exp(-1j*2*np.pi*t*e),beta)
     return result
 
-def get_Gij(alpha,beta,U):
-    """Compute correlator <c_i(t)^\dag c_j(0)>"""
-    return np.array([(alpha@alpha.T.conj()@beta@np.diag(U_t[i_t])@beta.T.conj()).T for i_t in range(len(U))])
-
-def get_Hij(alpha,beta,U):
-    """Compute correlator <c_i(t) c_j(0)^\dag>"""
-    return np.array([N/2*beta@np.diag(U_t[i_t].conj())@beta.T.conj() - beta@np.diag(U_t[i_t].conj())@beta.T.conj()@alpha@alpha.T.conj() for i_t in range(len(U))])
-
 corr_fn = "data/correlators_"+str(N)+'_'+"{:.3f}".format(full_time_ramp)+'_'+"{:.5f}".format(time_step)+'_'+"{:.3f}".format(full_time_measure)+'.npy'
 if not Path(corr_fn).is_file():
     txt_wf = 'time evolved wavefunction' if use_time_evolved else 'ground state wavefunction'
@@ -132,36 +132,15 @@ if not Path(corr_fn).is_file():
                 alpha = time_evolve(alpha,beta,E_GS,extra_time)
         else:
             alpha = np.copy(beta[:,:N//2])
-        #Time evolution measurement
-        U_t = [np.exp(-1j*2*np.pi*E_GS[:]*time) for time in time_list]
-        #
-        new = True
-        if new:
-            G_ij = get_Gij(alpha,beta,U_t)
-            H_ij = get_Hij(alpha,beta,U_t)
-            #rho1 = np.array([(alpha@alpha.T.conj()@beta@np.diag(U_t[i_t])@beta.T.conj())[0,:] for i_t in range(Nt)])
-            #rho1c = np.array([alpha[0]@alpha.T.conj()@beta@np.diag(U_t[i_t])@beta.T.conj() for i_t in range(Nt)])
-            #rho1b = np.array([beta[0]@beta.T.conj()@alpha@alpha.T.conj()@beta@np.diag(U_2[i_t])@beta.T.conj() for i_t in range(Nt)])
-            #rho1a = np.array([np.einsum('ab,ac,ic,d,eb,ed,c->i',alpha.conj(),beta,beta.conj(),beta[0],alpha,beta.conj(),U_2[i_t],optimize=True) for i_t in range(Nt)])
-            #rho2 = np.array([N/2*(beta@np.diag(U_t[i_t].conj())@beta.T.conj())[:,0] - (beta@np.diag(U_t[i_t].conj())@beta.T.conj()@alpha@alpha.T.conj())[:,0] for i_t in range(Nt)])
-            #rho2b = np.array([N/2*beta@np.diag(U_1[i_t])@beta[0].T.conj() - beta@np.diag(U_1[i_t])@beta.T.conj()@alpha@alpha.T.conj()@beta@beta[0].T.conj() for i_t in range(Nt)])
-            #rho2a = np.array([np.einsum('ab,ac,id,d,ec,eb,d->i',alpha.conj(),beta,beta,beta[0].conj(),beta.conj(),alpha,U_1[i_t],optimize=True)
-            #                 -np.einsum('ab,ac,id,c,ed,eb,d->i',alpha.conj(),beta,beta,beta[0].conj(),beta.conj(),alpha,U_1[i_t],optimize=True) for i_t in range(Nt)])
-        else:
-            #With populations
-            #rho1 = np.array([np.einsum('ik,kj,k,k->ij',evecs[:,:],evecs[:,:].T.conj(),U_1[i_t],pop_k,optimize=True) for i_t in range(Nt)])
-            #rho2 = np.array([np.einsum('ik,kj,k,k->ij',evecs[:,:],evecs[:,:].T.conj(),U_2[i_t],1-pop_k,optimize=True) for i_t in range(Nt)])
-            evecs = beta
-            rho1 = np.array([evecs[:,:N//2]@np.diag(U_1[i_t][:N//2])@evecs[:,:N//2].T.conj() for i_t in range(Nt)])
-            rho2 = np.array([evecs[:,N//2:]@np.diag(U_2[i_t][N//2:])@evecs[:,N//2:].T.conj() for i_t in range(Nt)])
-        #
+        #Time evolution and correlators
+        U_t = [np.exp(-1j*2*np.pi*E_GS*time) for time in time_list]
+        G_ij = get_Gij(alpha,beta,U_t)
+        H_ij = get_Hij(alpha,beta,U_t)
         #Correlator in space-time
         ZZ = np.zeros((N,Nt),dtype=complex)
         for i in range(N):
-            if new:
-                ZZ[i] = np.array([2*1j*np.imag(G_ij[i_t,i,0]*H_ij[i_t,i,0]) for i_t in range(Nt)])/N*2
-            else:
-                ZZ[i] = np.array([2*1j*np.imag(rho1[i_t,i,0]*rho2[i_t,i,0]) for i_t in range(Nt)])
+            ZZ[i] = np.array([2*1j*np.imag(G_ij[i_t,i,0]*H_ij[i_t,i,0]) for i_t in range(Nt)])/N*2
+        #2D FFT
         ZZ_fts[i_sr] = np.fft.fftshift(np.fft.fft2(ZZ,[N,Nomega]))
     if save_data:
         np.save(corr_fn,ZZ_fts)
