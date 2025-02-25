@@ -27,6 +27,7 @@ savefig_correlator = True
 
 #Parameters
 N = 42          #chain sites
+kx = np.fft.fftshift(np.fft.fftfreq(N,d=1))
 g_ = 10 #MHz
 h_ = 15 #MHz
 full_time_ramp = 0.5 if len(sys.argv)<3 else float(sys.argv[2])/1000#ramp time in ms
@@ -82,7 +83,6 @@ if plot_correlator:
     fig = plt.figure(figsize=(17, 8))
     txt_title = 'time evolved wavefunction' if use_time_evolved else 'ground state wavefunction'
     plt.suptitle("Correlator "+correlator_type+", total ramp time: "+str(int(full_time_ramp*1000))+" ns, "+txt_title)
-    kx = np.fft.fftshift(np.fft.fftfreq(N,d=1))
     for i_sr in range(len(stop_ratio_list)):
         stop_ratio = stop_ratio_list[i_sr]
         #Plot
