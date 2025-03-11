@@ -14,10 +14,10 @@ Mainly to understand how the solve method works.
 """
 
 S = 1/2
-L = 10      #linear system size
-h_i = 15  #MHz      -> divide by 2*np.pi ?
-J1_f = 10 #MHz
-tau = 0.5   #us (micro-seconds)
+L = 20      #linear system size
+h_i = 15*2*np.pi  #MHz      -> divide by 2*np.pi ?
+J1_f = 20*2*np.pi #MHz
+tau = 0.01#0.5   #us (micro-seconds) -> total ramp time
 N_time = 500
 
 time_list = np.linspace(0,tau,N_time)
@@ -36,9 +36,11 @@ if not Path(res_fn).is_file() or compute_anyway:
         args=arguments,    #same arguments are passed to events and jac
         t_span=(0,tau),
         y0=fs.initial_condition(h_i,L),
-        method='DOP853',
+        method='RK45',
         t_eval=time_list,
-#        first_step = 1e-8, #1 ns
+#       first_step=1e-6, #1 ns
+#       max_step=1e-4,
+#       dense_output=True,
     )
     print("Finished solution: ")
     print('fev: ',result.nfev)
@@ -54,14 +56,23 @@ else:   #load Bunch file
     with open(res_fn,'rb') as f:
         result = pickle.load(res_fn)
 
+h_t = h_i*(1-time_list/tau)
+J1_t = J1_f*time_list/tau
+theta_t = fs.theta_canted_Neel(*(J1_t,0,0,0,h_t,S))
 #Plot
 fig = plt.figure(figsize=(10,10))
 ax = fig.add_subplot()
-ax.plot(result.t,np.real(result.y[0]),'*b',label='theta')
-ax.plot(result.t,np.real(result.y[1]),'^r',label='phi')
-ax.plot(result.t,np.real(np.sum(result.y[2:L**2+2],axis=0))/L**2,'og',label='epsilon')
+l1 = ax.plot(result.t,np.real(result.y[0]),'*b',label='theta')
+l2 = ax.plot(result.t,np.real(result.y[1]),'^r',label='phi')
+l3 = ax.plot(result.t,theta_t,'^y',label='theoretical theta')
+
+ax_r = ax.twinx()
+lr1 = ax_r.plot(result.t,np.real(np.sum(result.y[2:L**2+2],axis=0))/L**2,'og',label='epsilon')
+ax_r.set_ylim(0,5)
+
+labels = [l.get_label() for l in l1+l2+l3+lr1]
+ax.legend(l1+l2+l3+lr1,labels)
 
 
-ax.legend()
 plt.show()
 
