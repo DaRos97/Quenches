@@ -13,5 +13,8 @@ old_1D/KZ_1D/results/
 new_1D/data/
 new_1D/exp_input/
 #
+SpinWave/exp_input/
+SpinWave/results/
+#
 */results/
 */figures/
