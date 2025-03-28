@@ -3,56 +3,60 @@ from scipy.linalg import expm
 import scipy
 import os
 from tqdm import tqdm
+import pickle
 
 def get_ramp_evolution(*args):
     """Compute the time evolved wave function along the ramp and at each time step evaluate populations and fidelity."""
-    N,g_t,h_t,time_step = args
-    time_steps = len(g_t)
+    N,g_t_i,h_t_i,time_step = args
+    time_steps = g_t_i.shape[0]
     time_evolved_psi = np.zeros((time_steps,N,N),dtype=complex)    #wavefunction at all time steps of the ramp
     fidelity = np.zeros(time_steps)
     populations = np.zeros((time_steps,N))
+    energies = np.zeros(time_steps)
     print("Time evolution")
     for it in tqdm(range(time_steps)):
         if it==0:
-            time_evolved_psi[it] = scipy.linalg.eigh(compute_H(g_t[it],h_t[it],N,1))[1]      #exact GS at t=0
+            time_evolved_psi[it] = scipy.linalg.eigh(compute_H(g_t_i[it],h_t_i[it],N,1))[1]      #exact GS at t=0
         else:
-            exp_H = expm(-1j*2*np.pi*compute_H(g_t[it],h_t[it],N,1)*time_step)
+            exp_H = expm(-1j*2*np.pi*compute_H(g_t_i[it],h_t_i[it],N,1)*time_step)
             #exp_H = expm(-1j*compute_H(g_t[it],h_t[it],N,1)*time_step)
             for m in range(N):  #evolve each mode independently
                 time_evolved_psi[it,:,m] = exp_H @ time_evolved_psi[it-1,:,m]
         #Fidelity wrt real GS
-        E_GS,psi_GS = scipy.linalg.eigh(compute_H(g_t[it],h_t[it],N,1))
+        E_GS,psi_GS = scipy.linalg.eigh(compute_H(g_t_i[it],h_t_i[it],N,1))
         fidelity[it] = np.absolute(scipy.linalg.det(time_evolved_psi[it,:,:N//2].T.conj()@psi_GS[:,:N//2]))**2
         #Occupation of populations
         populations[it] = compute_populations(time_evolved_psi[it],psi_GS)
-    return time_evolved_psi, fidelity,populations
+        energies[it] = np.sum(populations[it]*E_GS)/N
+    return time_evolved_psi, fidelity, populations, energies
 
 def compute_H(g_nn,h_field,N_sites,P=1):
     """NxN fermion Hamiltonian with PBC"""
     ham = np.zeros((N_sites,N_sites))
-    h_list = np.ones(N_sites)*h_field
+    h_list = h_field
     for i in range(N_sites-1):
-        ham[i,i+1] = g_nn
-        ham[i+1,i] = g_nn
-        ham[i,i] = h_list[i]*(-1)**(i+1)
-    ham[-1,-1] = h_list[-1]*(-1)**(N_sites)
+        ham[i,i+1] = g_nn[i]
+        ham[i+1,i] = g_nn[i]
+        ham[i,i] = h_list[i]#*(-1)**(i+1)
+    ham[-1,-1] = h_list[-1]#*(-1)**(N_sites)
     #PBC
-    ham[-1,0] = P*g_nn    #*P fermion number
-    ham[0,-1] = P*g_nn
+    ham[-1,0] = P*g_nn[i]    #*P fermion number
+    ham[0,-1] = P*g_nn[i]
     return ham
 
 def compute_correlator(correlator_type,*args):
     """Compute the correlator and its Fourier transform."""
-    N,omega_list,stop_ratio_list,measure_time_list,g_t,h_t,time_evolved_psi,use_time_evolved = args
+    N,omega_list,stop_ratio_list,measure_time_list,g_t_i,h_t_i,time_evolved_psi,use_time_evolved = args
     Nt = len(measure_time_list)
     Nomega = len(omega_list)
-    time_steps = len(g_t)
+    time_steps = g_t_i.shape[0]
     #
     corr_kw = np.zeros((len(stop_ratio_list),N,Nomega),dtype=complex)
+    corr_spacetime = np.zeros((len(stop_ratio_list),N,Nt),dtype=complex)
     for i_sr in tqdm(range(len(stop_ratio_list))):
         stop_ratio = stop_ratio_list[i_sr]
         i_t = int(time_steps*stop_ratio)-1
-        E_GS,beta = scipy.linalg.eigh( compute_H(g_t[i_t],h_t[i_t],N,1) )
+        E_GS,beta = scipy.linalg.eigh( compute_H(g_t_i[i_t],h_t_i[i_t],N,1) )
         if use_time_evolved:
             alpha = np.copy(time_evolved_psi[i_t][:,:N//2])
         else:
@@ -66,9 +70,10 @@ def compute_correlator(correlator_type,*args):
         func_corr = dic_correlators[correlator_type]
         for i in range(N):
             corr_xt[i] = np.array([func_corr(G_ij[i_t],H_ij[i_t],i) for i_t in range(Nt)])
+        corr_spacetime[i_sr] = corr_xt
         #2D FFT
         corr_kw[i_sr] = np.fft.fftshift(np.fft.fft2(corr_xt,[N,Nomega]))
-    return corr_kw
+    return corr_kw, corr_spacetime
 
 def correlator_zz(G,H,i):
     ip1 = (i+1)%G.shape[0]  #i+1 is modulo N -> N+1=1
@@ -119,19 +124,23 @@ def compute_populations(psi_t,psi_GS):
     return result
 
 def get_Gij(alpha,beta,U):
-    """Compute correlator <c_i(t)^\dag c_j(0)>"""
+    """Compute correlator <c_i(t)^dag c_j(0)>"""
     return np.array([(alpha@alpha.T.conj()@beta@np.diag(U[i_t])@beta.T.conj()).T for i_t in range(len(U))])
 
 def get_Hij(alpha,beta,U):
-    """Compute correlator <c_i(t) c_j(0)^\dag>"""
+    """Compute correlator <c_i(t) c_j(0)^dag>"""
     N = beta.shape[0]
     return np.array([N/2*beta@np.diag(U[i_t].conj())@beta.T.conj() - beta@np.diag(U[i_t].conj())@beta.T.conj()@alpha@alpha.T.conj() for i_t in range(len(U))])
 
-def get_Hamiltonian_parameters(time_steps,g_,h_):
-    """Compute g(t) and h(t) for each time of the ramp."""
-    g_t = np.linspace(0,10,time_steps)
-    h_t = np.linspace(15,0,time_steps)
-    return g_t,h_t
+def get_Hamiltonian_parameters(time_steps,g_in,g_fin,h_in,h_fin):
+    """Compute g(t) and h(t) for each time and site of the ramp."""
+    g_t_i = np.zeros((time_steps,len(g_in)))   #time and space
+    h_t_i = np.zeros((time_steps,len(g_in)))   #time and space
+    for it in range(time_steps):
+        for i in range(len(g_in)):
+            g_t_i[it,i] = np.linspace(g_in[i],g_fin[i],time_steps)[it]
+            h_t_i[it,i] = np.linspace(h_in[i],h_fin[i],time_steps)[it]
+    return g_t_i,h_t_i
 
 def get_data_filename(spec_name,pars,extension):
     """Define the filename for data. Pars is a list of tuple, each tuple has the argument and the number of decimals precision."""
@@ -147,3 +156,17 @@ def get_data_filename(spec_name,pars,extension):
         fn += '_'+f"{i[0]:.{i[1]}f}"
     fn += extension
     return fn
+
+def extract_experimental_parameters(fn):
+    """Import experimental Hamiltonian parameters"""
+    with open(fn,'rb') as f:
+        data = pickle.load(f)
+    pairs = list(data['xx'].keys())
+    g = np.zeros(len(pairs))
+    for i in range(len(pairs)):
+        g[i] = data['xx'][pairs[i]]
+    sites = list(data['z'].keys())
+    h = np.zeros(len(sites))
+    for i in range(len(sites)):
+        h[i] = data['z'][sites[i]]
+    return g*1000,h*1000        #put it in MHz

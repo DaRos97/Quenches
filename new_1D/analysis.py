@@ -41,23 +41,33 @@ if Path(correlator2_fn).is_file():
 
 #
 
-fig = plt.figure(figsize=(17, 15))
+fig = plt.figure(figsize=(22, 15))
 txt_title = 'time evolved wavefunction' if use_time_evolved else 'ground state wavefunction'
 plt.suptitle("Correlator up: "+correlator1_type+", correlator down: "+correlator2_type)
 for i_sr in range(5):
     label_cm = 'Magnitude of Fourier Transform' if i_sr==4 else ''
     stop_ratio = stop_ratio_list[i_sr]
+
     ax = fig.add_subplot(3,5,i_sr+1)
     pm = ax.pcolormesh(kx, omega_list, (np.abs(correlator1[i_sr]).T), shading='auto', cmap='magma')
     plt.colorbar(pm,label=label_cm)
+    if i_sr != 0:
+        ax.set_yticks([])
     ax.set_ylim(-50,50)
+
     ax = fig.add_subplot(3,5,i_sr+6)
-    pm = ax.pcolormesh(kx, omega_list, (np.abs(correlator1[i_sr]).T)*abs(omega_list[:,None])/abs(kx[None,:]), shading='auto', cmap='magma')
+    new_corr = np.abs((correlator1[i_sr].T)*(1j*omega_list[:,None])/(np.exp(1j*kx[None,:])-1) )**(1)
+    pm = ax.pcolormesh(kx, omega_list, new_corr, shading='auto', cmap='magma')
     plt.colorbar(pm,label=label_cm)
+    if i_sr != 0:
+        ax.set_yticks([])
     ax.set_ylim(-50,50)
+
     ax = fig.add_subplot(3,5,i_sr+11)
     pm = ax.pcolormesh(kx, omega_list, (np.abs(correlator2[i_sr]).T), shading='auto', cmap='magma')
     plt.colorbar(pm,label=label_cm)
+    if i_sr != 0:
+        ax.set_yticks([])
     ax.set_ylim(-50,50)
 
 plt.show()

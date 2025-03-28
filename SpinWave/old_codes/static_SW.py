@@ -40,8 +40,9 @@ delta = 0       #parameter for ZZ
 sign = np.sign(J_1)
 tit = "FM" if J_1 < 0 else "AFM"
 S = 0.5     #spin value
-n_H = 26    #number of h-field points
-H_list = np.linspace(0,2.5,n_H)
+n_H = 3#26    #number of h-field points
+#H_list = np.linspace(0,2.5,n_H)
+H_list = np.linspace(1.5,2.5,n_H)
 def fun_E0(J_1,S,th,h):
     """Energy coming from 0 order terms in HP expansion"""
     return 2*S*J_1*(-sign*np.sin(th)**2*(S+1)-2*delta*np.cos(th)**2) - h*np.cos(th)*(2*S+1/2)
@@ -52,11 +53,11 @@ def fun_th(h,J_1,S):
 energy_fn = "results/energy_J1_"+"{:.3f}".format(J_1)+"_delta_"+"{:.3f}".format(delta)+"_h_"+"{:.3f}".format(H_list[0])+"-"+"{:.3f}".format(H_list[-1])+"_"+str(n_H)+"_nkx"+str(nkx)+"_nky"+str(nky)+".npy"
 bogTrsf_fn = "results/bogTrsf_J1_"+"{:.3f}".format(J_1)+"_delta_"+"{:.3f}".format(delta)+"_h_"+"{:.3f}".format(H_list[0])+"-"+"{:.3f}".format(H_list[-1])+"_"+str(n_H)+"_nkx"+str(nkx)+"_nky"+str(nky)+".npy"
 save = True
-plot_temp = False
+plot_temp = True#False
 #Matrix for Bogoliubov
 J_ = np.identity(4)
 J_[0,0] = J_[1,1] = -1
-if not Path(energy_fn).is_file():
+if not Path(energy_fn).is_file() or plot_temp:
     w_h = np.zeros((n_H,nkx,nky))
     Mk_h = np.zeros((n_H,2,2,nkx,nky))    #Transformation matrix for Bogoliubov trsf
     for ind_h in range(n_H):
