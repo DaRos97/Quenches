@@ -8,13 +8,13 @@ from pathlib import Path
 import sys
 import scipy
 
-filling_txt = '1%6'     #Not correct yet
+filling_txt = '5%6'     #Not correct yet
 filling = int(filling_txt[0])/int(filling_txt[-1])
 
 use_experimental_parameters = 1#False
 txt_exp = 'expPars' if use_experimental_parameters else 'uniform'
 
-save_time_evolved_data = 0#True
+save_time_evolved_data = True
 plot_fidelity = 0#True
 plot_populations = 0#True
 plot_energies = 0#True
@@ -29,8 +29,8 @@ for i in correlator_type:
     if i not in ['z','e','j']:  #supported operators
         print("Not supported operator ",i,"\nAbort")
 #correlator options
-save_correlator_data = 0#True
-plot_correlator = True
+save_correlator_data = True
+plot_correlator = 0#True
 savefig_correlator = 0#True
 
 #Parameters

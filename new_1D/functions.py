@@ -23,21 +23,26 @@ def get_ramp_evolution(*args):
             indices_m = {3/6:[1,3,5], 2/6:[1,3], 1/6:[1,], 4/6: [1,3,4,5], 5/6: [1,2,3,4,5]}
             for i in range(N//6):
                 for ip in indices_p[filling]:
-                    h_i[(N//6-1)*i+ip] = 15
+                    h_i[(N//6-1)*i+ip] = -15
                 for im in indices_m[filling]:
-                    h_i[(N//6-1)*i+im] = -15
-            time_evolved_psi[it] = scipy.linalg.eigh(compute_H(g_i,h_i,N,1))[1]      #exact GS at t=0
+                    h_i[(N//6-1)*i+im] = 15
+            E_GS,psi_GS = scipy.linalg.eigh(compute_H(g_i,h_i,N,1))      #exact GS at t=0
+            time_evolved_psi[it] = psi_GS
+            #
+            fidelity[it] = np.absolute(scipy.linalg.det(time_evolved_psi[it,:,:modes].T.conj()@psi_GS[:,:modes]))**2
+            populations[it] = compute_populations(time_evolved_psi[it],psi_GS)
+            energies[it] = np.sum(populations[it]*E_GS)/N - np.sum(h_i)/N/2   #remove offset energy of magnetif field
         else:
             exp_H = expm(-1j*2*np.pi*compute_H(g_t_i[it],h_t_i[it],N,1)*time_step)
             #exp_H = expm(-1j*compute_H(g_t[it],h_t[it],N,1)*time_step)
             for m in range(N):  #evolve each mode independently
                 time_evolved_psi[it,:,m] = exp_H @ time_evolved_psi[it-1,:,m]
-        #Fidelity wrt real GS
-        E_GS,psi_GS = scipy.linalg.eigh(compute_H(g_t_i[it],h_t_i[it],N,1))
-        fidelity[it] = np.absolute(scipy.linalg.det(time_evolved_psi[it,:,:modes].T.conj()@psi_GS[:,:modes]))**2
-        #Occupation of populations
-        populations[it] = compute_populations(time_evolved_psi[it],psi_GS)
-        energies[it] = np.sum(populations[it]*E_GS)/N - np.sum(h_t_i[it])/N/2   #remove offset energy of magnetif field
+            #Fidelity wrt real GS
+            E_GS,psi_GS = scipy.linalg.eigh(compute_H(g_t_i[it],h_t_i[it],N,1))
+            fidelity[it] = np.absolute(scipy.linalg.det(time_evolved_psi[it,:,:modes].T.conj()@psi_GS[:,:modes]))**2
+            #Occupation of populations
+            populations[it] = compute_populations(time_evolved_psi[it],psi_GS)
+            energies[it] = np.sum(populations[it]*E_GS)/N - np.sum(h_t_i[it])/N/2   #remove offset energy of magnetif field
     return time_evolved_psi, fidelity, populations, energies
 
 def compute_H(g_nn,h_field,N_sites,P=1):
