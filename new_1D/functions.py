@@ -7,7 +7,8 @@ import pickle
 
 def get_ramp_evolution(*args):
     """Compute the time evolved wave function along the ramp and at each time step evaluate populations and fidelity."""
-    N,g_t_i,h_t_i,time_step = args
+    N,g_t_i,h_t_i,time_step,filling = args
+    modes = int(N*filling)
     time_steps = g_t_i.shape[0]
     time_evolved_psi = np.zeros((time_steps,N,N),dtype=complex)    #wavefunction at all time steps of the ramp
     fidelity = np.zeros(time_steps)
@@ -16,7 +17,16 @@ def get_ramp_evolution(*args):
     print("Time evolution")
     for it in tqdm(range(time_steps)):
         if it==0:
-            time_evolved_psi[it] = scipy.linalg.eigh(compute_H(g_t_i[it],h_t_i[it],N,1))[1]      #exact GS at t=0
+            g_i = np.zeros(N)
+            h_i = np.zeros(N)
+            indices_p = {3/6:[0,2,4], 2/6:[0,2,4,5], 1/6:[0,2,3,4,5], 4/6: [0,2], 5/6: [0,]}
+            indices_m = {3/6:[1,3,5], 2/6:[1,3], 1/6:[1,], 4/6: [1,3,4,5], 5/6: [1,2,3,4,5]}
+            for i in range(N//6):
+                for ip in indices_p[filling]:
+                    h_i[(N//6-1)*i+ip] = 15
+                for im in indices_m[filling]:
+                    h_i[(N//6-1)*i+im] = -15
+            time_evolved_psi[it] = scipy.linalg.eigh(compute_H(g_i,h_i,N,1))[1]      #exact GS at t=0
         else:
             exp_H = expm(-1j*2*np.pi*compute_H(g_t_i[it],h_t_i[it],N,1)*time_step)
             #exp_H = expm(-1j*compute_H(g_t[it],h_t[it],N,1)*time_step)
@@ -24,10 +34,10 @@ def get_ramp_evolution(*args):
                 time_evolved_psi[it,:,m] = exp_H @ time_evolved_psi[it-1,:,m]
         #Fidelity wrt real GS
         E_GS,psi_GS = scipy.linalg.eigh(compute_H(g_t_i[it],h_t_i[it],N,1))
-        fidelity[it] = np.absolute(scipy.linalg.det(time_evolved_psi[it,:,:N//2].T.conj()@psi_GS[:,:N//2]))**2
+        fidelity[it] = np.absolute(scipy.linalg.det(time_evolved_psi[it,:,:modes].T.conj()@psi_GS[:,:modes]))**2
         #Occupation of populations
         populations[it] = compute_populations(time_evolved_psi[it],psi_GS)
-        energies[it] = np.sum(populations[it]*E_GS)/N
+        energies[it] = np.sum(populations[it]*E_GS)/N - np.sum(h_t_i[it])/N/2   #remove offset energy of magnetif field
     return time_evolved_psi, fidelity, populations, energies
 
 def compute_H(g_nn,h_field,N_sites,P=1):
@@ -46,7 +56,8 @@ def compute_H(g_nn,h_field,N_sites,P=1):
 
 def compute_correlator(correlator_type,*args):
     """Compute the correlator and its Fourier transform."""
-    N,omega_list,stop_ratio_list,measure_time_list,g_t_i,h_t_i,time_evolved_psi,use_time_evolved = args
+    N,omega_list,stop_ratio_list,measure_time_list,g_t_i,h_t_i,time_evolved_psi,use_time_evolved,filling = args
+    modes = int(N*filling)
     Nt = len(measure_time_list)
     Nomega = len(omega_list)
     time_steps = g_t_i.shape[0]
@@ -58,13 +69,13 @@ def compute_correlator(correlator_type,*args):
         i_t = int(time_steps*stop_ratio)-1
         E_GS,beta = scipy.linalg.eigh( compute_H(g_t_i[i_t],h_t_i[i_t],N,1) )
         if use_time_evolved:
-            alpha = np.copy(time_evolved_psi[i_t][:,:N//2])
+            alpha = np.copy(time_evolved_psi[i_t][:,:modes])
         else:
-            alpha = np.copy(beta[:,:N//2])
+            alpha = np.copy(beta[:,:modes])
         #Time evolution and correlators
         U_t = [np.exp(-1j*2*np.pi*E_GS*time) for time in measure_time_list]
-        G_ij = get_Gij(alpha,beta,U_t)/np.sqrt(N/2)
-        H_ij = get_Hij(alpha,beta,U_t)/np.sqrt(N/2)
+        G_ij = get_Gij(alpha,beta,U_t)/np.sqrt(modes)
+        H_ij = get_Hij(alpha,beta,U_t)/np.sqrt(modes)
         #Correlator in space-time: here we decide which correlator we are computing
         corr_xt = np.zeros((N,Nt),dtype=complex)
         func_corr = dic_correlators[correlator_type]

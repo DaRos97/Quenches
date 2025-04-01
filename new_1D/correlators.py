@@ -8,16 +8,19 @@ from pathlib import Path
 import sys
 import scipy
 
+filling_txt = '1%6'     #Not correct yet
+filling = int(filling_txt[0])/int(filling_txt[-1])
+
 use_experimental_parameters = 1#False
 txt_exp = 'expPars' if use_experimental_parameters else 'uniform'
 
-save_time_evolved_data = True
+save_time_evolved_data = 0#True
 plot_fidelity = 0#True
 plot_populations = 0#True
-plot_energies = True
+plot_energies = 0#True
 savefig_fidelity = 0#True
 savefig_populations = 0#True
-savefig_energies = True
+savefig_energies = 0#True
 
 use_time_evolved = True
 #which correlator
@@ -26,9 +29,9 @@ for i in correlator_type:
     if i not in ['z','e','j']:  #supported operators
         print("Not supported operator ",i,"\nAbort")
 #correlator options
-save_correlator_data = True
+save_correlator_data = 0#True
 plot_correlator = True
-savefig_correlator = True
+savefig_correlator = 0#True
 
 #Parameters
 full_time_ramp = 0.5 if len(sys.argv)<3 else float(sys.argv[2])/1000#ramp time in ms
@@ -41,6 +44,17 @@ if use_experimental_parameters:
     g_in,h_in = fs.extract_experimental_parameters(initial_parameters_fn)
     g_fin,h_fin = fs.extract_experimental_parameters(final_parameters_fn)
     N = len(g_in)
+    #
+    if 0:
+        h_in = np.ones(N)*15 #MHz
+        for i in range(N):
+            h_in[i] *= (-1)**i
+        h_fin = np.zeros(N)
+        txt_exp = 'expG_uniformH'
+    if 0:
+        g_in = np.zeros(N)
+        g_fin = np.ones(N)*10 #MHz
+        txt_exp = 'expH_uniformG'
 else:
     N = 42          #chain sites
     g_in = np.zeros(N)
@@ -63,13 +77,13 @@ print("Parameters of ramp: ")
 print("Sites: ",N,"\nRamp time (ns): ",full_time_ramp*1000,"\nRamp time step (ns): ",time_step*1000)
 
 """Time evolution"""
-args_fn = [(N,0),(full_time_ramp,5),(time_step,5),(txt_exp,0)]
+args_fn = [(N,0),(full_time_ramp,5),(time_step,5),(txt_exp,0),(filling_txt,0)]
 time_evolved_psi_fn = fs.get_data_filename("time_evolved_psi",args_fn,'.npy')
 fidelity_fn = fs.get_data_filename("fidelity",args_fn,'.npy')
 populations_fn = fs.get_data_filename("populations",args_fn,'.npy')
 energies_fn = fs.get_data_filename("energies",args_fn,'.npy')
 if not Path(time_evolved_psi_fn).is_file() and (use_time_evolved or plot_fidelity or plot_populations or plot_energies): #Time evolution and fidelity along the ramp
-    time_evolved_psi, fidelity, populations, energies = fs.get_ramp_evolution(*(N,g_t_i,h_t_i,time_step))
+    time_evolved_psi, fidelity, populations, energies = fs.get_ramp_evolution(*(N,g_t_i,h_t_i,time_step,filling))
     if save_time_evolved_data:
         np.save(time_evolved_psi_fn,time_evolved_psi)
         np.save(fidelity_fn,fidelity)
@@ -88,7 +102,7 @@ correlator_fn = fs.get_data_filename('correlator',args_corr_fn,'.npy')
 correlator_spacetime_fn = fs.get_data_filename('correlator_spacetime',args_corr_fn,'.npy')
 if not Path(correlator_fn).is_file():
     print("Computing correlation function ",correlator_type," with "+txt_wf+': ')
-    correlator,correlator_st = fs.compute_correlator(correlator_type,*(N,omega_list,stop_ratio_list,measure_time_list,g_t_i,h_t_i,time_evolved_psi,use_time_evolved))
+    correlator,correlator_st = fs.compute_correlator(correlator_type,*(N,omega_list,stop_ratio_list,measure_time_list,g_t_i,h_t_i,time_evolved_psi,use_time_evolved,filling))
     if save_correlator_data:
         np.save(correlator_fn,correlator)
         np.save(correlator_spacetime_fn,correlator_st)
@@ -184,7 +198,7 @@ if plot_energies:
         gs_energies[it] = np.sum(E_GS[:N//2])/N
     fig = plt.figure()
     ax = fig.add_subplot()
-    ax.plot(np.linspace(0,full_time_ramp*1000,time_steps),energies-gs_energies,color='r',label='time-evolved state energy')
+    ax.plot(np.linspace(0,full_time_ramp*1000,time_steps),energies,color='r',label='time-evolved state energy')
 #    ax.plot(np.linspace(0,full_time_ramp*1000,time_steps),gs_energies,color='r',label='time-evolved state energy')
     ax.set_ylabel('Energy')
     ax.set_xlabel('time (ns)')

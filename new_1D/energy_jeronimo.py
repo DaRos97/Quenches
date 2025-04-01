@@ -9,14 +9,14 @@ import sys
 import scipy
 
 plot = True
-save = 0#True
+save = True
 
 use_experimental_parameters = 1#False
 txt_exp = 'expPars' if use_experimental_parameters else 'uniform'
 
 ramp_times = [30,40,50,60,80,100,200,300,500]
 stop_ratio_list = [1,] #np.linspace(0.1,1,10)     #ratios of ramp where we stop and measure
-energies = np.zeros((len(ramp_times),len(stop_ratio_list)))
+energies = np.zeros(len(ramp_times))
 for i in range(len(ramp_times)):
     full_time_ramp = ramp_times[i]/1000
     time_steps = 500        #of ramp
@@ -46,24 +46,15 @@ for i in range(len(ramp_times)):
     else:
         print("ramp time ",full_time_ramp," ns missing")
         exit()
-    for i_sr in range(len(stop_ratio_list)):
-        ind_t = int(time_steps*stop_ratio_list[i_sr])
-        if ind_t == time_steps:
-            ind_t -= 1
-        E_GS = scipy.linalg.eigvalsh(fs.compute_H(g_t_i[ind_t],h_t_i[ind_t],N,1))
-        gs_en = np.sum(E_GS[:N//2])/N
-        print(gs_en)
-        print(ens[ind_t])
-        energies[i,i_sr] = ens[ind_t]-gs_en
+
+    energies[i] = ens[-1]/np.sum(g_fin)*N
 
 if plot:
     fig = plt.figure()
     ax = fig.add_subplot()
-#    for i in range(len(stop_ratio_list)):
-    for i in range(len(ramp_times)):
-#        ax.plot(ramp_times,energies[:,i],label='stop ratio: '+"{:.1f}".format(stop_ratio_list[i]))
-        ax.scatter(stop_ratio_list,energies[i,:],marker='*',label='ramp time: '+"{:.1f}".format(ramp_times[i]))
-    ax.legend()
+    ax.scatter(ramp_times,energies,marker='*',color='b')
+    ax.set_xlabel("Ramp time (ns)")
+    ax.set_title("Bond average energy <XX+YY>/2")
     plt.show()
 
 if save:

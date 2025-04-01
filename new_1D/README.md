@@ -10,10 +10,15 @@ We have PBC, 42 sites and measuring times between 0 and 800 ns.
 States are obtained through a linear ramp of total time 500 ns starting from the staggered state and arriving to the gappless state.
 Model is XX+YY + staggered Z.
 
+Filling of initial state -> still need to make it work
+
 ## Analysis
 `analysis.py`
 
 Here we compute some things on the correlators.
+
+`energy_jeronimo.py`
+Extract the final energy (end of ramp) for different ramp times and divide by nn coupling J to get a comparison with experimental energy.
 
 ## Experimental parameters
 
