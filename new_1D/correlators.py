@@ -8,33 +8,34 @@ from pathlib import Path
 import sys
 import scipy
 
-filling_txt = '5%6'     #Not correct yet
-filling = int(filling_txt[0])/int(filling_txt[-1])
 
-use_experimental_parameters = 1#False
-txt_exp = 'expPars' if use_experimental_parameters else 'uniform'
-
-save_time_evolved_data = True
-plot_fidelity = 0#True
-plot_populations = 0#True
-plot_energies = 0#True
-savefig_fidelity = 0#True
-savefig_populations = 0#True
-savefig_energies = 0#True
-
-use_time_evolved = True
-#which correlator
+#Relevant inputs
 correlator_type = 'zz' if len(sys.argv)<2 else sys.argv[1]
+full_time_ramp = 0.5 if len(sys.argv)<3 else float(sys.argv[2])/1000    #ramp time in ms
+filling_txt = '3%6' if len(sys.argv)<4 else sys.argv[3]+'%6'
+use_experimental_parameters = False
+use_time_evolved = True
+#Save
+save_time_evolved_data = True
+save_correlator_data = 0#True
+
+#Filling
+filling = int(filling_txt[0])/int(filling_txt[-1])
+print("Filling ",filling_txt,' is ',filling)
+#Experimental (disordered) or uniform parameters
+txt_exp = 'expPars' if use_experimental_parameters else 'uniform'
+#Time evlution options
+plot_fidelity,savefig_fidelity = (0,0)
+plot_populations,savefig_populations = (0,0)
+plot_energies,savefig_energies = (0,0)
+#Correlator options
+plot_correlator,savefig_correlator = (1,0)
+#Which correlator
 for i in correlator_type:
     if i not in ['z','e','j']:  #supported operators
         print("Not supported operator ",i,"\nAbort")
-#correlator options
-save_correlator_data = True
-plot_correlator = 0#True
-savefig_correlator = 0#True
 
 #Parameters
-full_time_ramp = 0.5 if len(sys.argv)<3 else float(sys.argv[2])/1000#ramp time in ms
 time_steps = 500        #of ramp
 time_step = full_time_ramp/time_steps  #time step of ramp
 #
@@ -89,11 +90,13 @@ if not Path(time_evolved_psi_fn).is_file() and (use_time_evolved or plot_fidelit
         np.save(fidelity_fn,fidelity)
         np.save(populations_fn,populations)
         np.save(energies_fn,energies)
-else:
+elif use_time_evolved or plot_fidelity or plot_populations or plot_energies:
     time_evolved_psi = np.load(time_evolved_psi_fn)
     fidelity = np.load(fidelity_fn)
     populations = np.load(populations_fn)
     energies = np.load(energies_fn)
+if not use_time_evolved:
+    time_evolved_psi = 0
 
 """Correlator"""
 txt_wf = 'time-evolved' if use_time_evolved else 'GS-wf'
@@ -159,7 +162,7 @@ if plot_fidelity:   #Plot fidelity along the ramp and quenched values of h and g
     ax.set_ylabel("Fidelity wrt GS")
     ax.set_xlabel("time (ns)")
     ax_r = ax.twinx()
-    l2 = ax_r.plot(np.linspace(0,full_time_ramp*1000,time_steps),g_t_i[:,0],color='g site 0',label="g")
+    l2 = ax_r.plot(np.linspace(0,full_time_ramp*1000,time_steps),g_t_i[:,0],label='g site 0',color="g")
     l3 = ax_r.plot(np.linspace(0,full_time_ramp*1000,time_steps),h_t_i[:,0],color='b',label="h site 0")
     ax_r.set_ylabel("coupling g and field h (MHz)")
     ax.set_title("Full ramp fidelity")
@@ -172,16 +175,17 @@ if plot_fidelity:   #Plot fidelity along the ramp and quenched values of h and g
 
 if plot_populations:
     time_steps = g_t_i.shape[0]
+    modes = int(filling*N)
     E_GS,psi_GS = scipy.linalg.eigh(fs.compute_H(g_t_i[-1],h_t_i[-1],N,1))
     cmap = mpl.colormaps['plasma']
-    colors = cmap(np.linspace(0,1,N//2))
+    colors = cmap(np.linspace(0,1,modes))
     fig = plt.figure()
     ax = fig.add_subplot()
-    for i in range(N//2,N):#N//2-1):
-        ax.plot(np.linspace(0,full_time_ramp*1000,time_steps),populations[:,i],color=colors[i-N//2])
+    for i in range(modes):#N//2-1):
+        ax.plot(np.linspace(0,full_time_ramp*1000,time_steps),populations[:,i],color=colors[i])
     ax.set_ylabel('Modes occupations')
     ax.set_xlabel('time (ns)')
-    norm = Normalize(vmin=E_GS[N//2], vmax=E_GS[-1])
+    norm = Normalize(vmin=E_GS[0], vmax=E_GS[modes])
     sm = ScalarMappable(cmap=cmap, norm=norm)  # Create a ScalarMappable for the colorbar
     sm.set_array([])  # The ScalarMappable needs an array, even if unused
     cbar = plt.colorbar(sm, ax=ax)
