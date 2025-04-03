@@ -29,6 +29,7 @@ def get_N_12(*pars):
         result += S/2*Gamma[i]*(p_xx[i]-p_yy[i]-2*1j*p_xy[i])
     return result
 def get_p_xx(theta,phi,J,D,order='canted_Neel'):
+    """J and D are tuple with 1st and 2nd nn. Each can be either a number or a Ns*Ns matrix of values for site dependent case."""
     if order=='canted_Neel':
         return (-J[0]*(np.cos(theta)**2*np.cos(phi)**2-np.sin(phi)**2+D[0]*np.sin(theta)**2*np.cos(phi)**2),
                 J[1]*(np.cos(theta)**2*np.cos(phi)**2+np.sin(phi)**2+D[1]*np.sin(theta)**2*np.cos(phi)**2))
@@ -69,8 +70,31 @@ def get_E_GS(*pars):
     Ns = epsilon.shape[0]*epsilon.shape[1]
     return E_0 + np.sum(epsilon[~np.isnan(epsilon)])/Ns
 
-def get_angles(S,J,D,h):
-    """Compute angles theta and phi of quantization axis depending on Hamiltonian parameters."""
+def get_angles(S,J_i,D_i,h_i):
+    """Compute angles theta and phi of quantization axis depending on Hamiltonian parameters.
+    For site-dependent Hamiltonian parameters we take the average.
+    """
+    J = []
+    D = []
+    for i in range(2):
+        if not (J_i[i] == np.zeros(J_i[i].shape)).all():
+            J.append(abs(float(np.sum(J_i[i])/(J_i[i][np.nonzero(J_i[i])]).shape)))
+        else:
+            J.append(0)
+        if not (D_i[i] == np.zeros(D_i[i].shape)).all():
+            D.append(float(np.sum(D_i[i])/(D_i[i][np.nonzero(D_i[i])]).shape))
+        else:
+            D.append(0)
+    if J[0]!=0:
+        D[0] = D[0]/J[0]        #As we defined in notes
+    if J[1]!=0:
+        D[1] = D[1]/J[1]        #As we defined in notes
+    if not (h_i == np.zeros(h_i.shape)).all():
+        h_av = float(np.sum(h_i)/(h_i[np.nonzero(h_i)]).shape)
+        h_stag = np.absolute(h_i[np.nonzero(h_i)]-h_av)
+        h = float(np.sum(h_stag)/(h_stag[np.nonzero(h_stag)]).shape)
+    else:
+        h = 0
     if J[1]<J[0]/2 and h<4*S*(J[0]*(1-D[0])-J[1]*(1-D[1])):
         theta = np.arccos(h/(4*S*(J[0]*(1-D[0])-J[1]*(1-D[1]))))
     else:
@@ -110,64 +134,44 @@ def get_Hamiltonian_rs(*parameters):
     Conventions for the real space wavefunction and other things are in the notes.
     SECOND NEAREST-NEIGHBOR NOT IMPLEMENTED.
     """
-    S,Lx,Ly,h,theta,phi,J,D = parameters
-    if J[1]!=0:
-        print("Second nn not implemented")
-        exit()
+    S,Lx,Ly,h_i,theta,phi,J_i,D_i = parameters
     Ns = Lx*Ly
-    ham = np.zeros((2*N_s,2*Ns),dtype=complex)
-    p_zz = get_p_zz(theta,phi,J,D)
-    p_xx = get_p_xx(theta,phi,J,D)
-    p_yy = get_p_yy(theta,phi,J,D)
-    p_xy = get_p_xy(theta,phi,J,D)
+    ham = np.zeros((2*Ns,2*Ns),dtype=complex)
+    temp1 = np.zeros((2*Ns,2*Ns),dtype=complex)
+    temp2 = np.zeros((2*Ns,2*Ns),dtype=complex)
+    p_zz = get_p_zz(theta,phi,J_i,D_i)
+    p_xx = get_p_xx(theta,phi,J_i,D_i)
+    p_yy = get_p_yy(theta,phi,J_i,D_i)
+    p_xy = get_p_xy(theta,phi,J_i,D_i)
     #diagonal
-    diag = h/2*np.cos(theta)-2*S*(p_zz[0]+p_zz[1])
-    for i in range(2*Ns):
-        ham[i,i] = diag
+    ham[:Ns,:Ns] = ham[Ns:,Ns:] = h_i/2*np.cos(theta) - 2*S*np.diag(np.diagonal(p_zz[0]+p_zz[1]))
     #off_diag 1 - nn
     off_diag_1_nn = S/2*(p_xx[0]+p_yy[0])
+    ham[:Ns,:Ns] += off_diag_1_nn
+    ham[Ns:,Ns:] += off_diag_1_nn
     #off_diag 2 - nn
     off_diag_2_nn = S/2*(p_xx[0]-p_yy[0]+2*1j*p_xy[0])
-    for ix in range(Lx):
-        for iy in range(Ly):
-            ind = iy+ix*Ly
-            ind_plus_y = ind+1
-            if ind_plus_y//Ly==ind//Ly:
-                #off_diag 1 - nn
-                ham[ind,ind_plus_y] = off_diag_1_nn
-                ham[ind_plus_y,ind] = off_diag_1_nn
-                ham[ind+Ns,ind_plus_y+Ns] = off_diag_1_nn
-                ham[ind_plus_y+Ns,ind+Ns] = off_diag_1_nn
-                #off_diag 2 - nn
-                ham[ind,ind_plus_y+Ns] = off_diag_2_nn
-                ham[ind_plus_y,ind+Ns] = off_diag_2_nn
-                ham[ind+Ns,ind_plus_y] = off_diag_2_nn
-                ham[ind_plus_y+Ns,ind] = off_diag_2_nn
-            #
-            ind_plus_x = ind+Ly
-            if ind_plus_x<Lx*Ly:
-                #off_diag 1 - nn
-                ham[ind,ind_plus_x] = off_diag_1_nn
-                ham[ind_plus_x,ind] = off_diag_1_nn
-                ham[ind+Ns,ind_plus_x+Ns] = off_diag_1_nn
-                ham[ind_plus_x+Ns,ind+Ns] = off_diag_1_nn
-                #off_diag 2 - nn
-                ham[ind,ind_plus_x+Ns] = off_diag_2_nn
-                ham[ind_plus_x,ind+Ns] = off_diag_2_nn
-                ham[ind+Ns,ind_plus_x] = off_diag_2_nn
-                ham[ind_plus_x+Ns,ind] = off_diag_2_nn
+    ham[:Ns,Ns:] += off_diag_2_nn
+    ham[Ns:,:Ns] += off_diag_2_nn.conj()
     return ham
+
 def get_correlator(ts_i,ts_j,S,G,H,A,B):
-    """Compute real space zz correlator."""
+    """Compute real space zz correlator as in notes."""
     t_zz_i,t_zx_i,t_zy_i = ts_i
     t_zz_j,t_zx_j,t_zy_j = ts_j
-    return 2*1j*(
-        np.imag(H)*(t_zz_i*t_zz_j*n.real(G)+S/2*(t_zx_i*t_zx_j + t_zy_i*t_zy_j + t_zx_i*t_zy_j - t_zy_i*t_zx_j))    +
-        np.imag(G)*(t_zz_i*t_zz_j*n.real(H)+S/2*(t_zx_i*t_zx_j + t_zy_i*t_zy_j - t_zx_i*t_zy_j + t_zy_i*t_zx_j))    +
-        np.imag(A)*(t_zz_i*t_zz_j*n.real(B)+S/2*(t_zx_i*t_zx_j - t_zy_i*t_zy_j + t_zx_i*t_zy_j + t_zy_i*t_zx_j))    +
-        np.imag(B)*(t_zz_i*t_zz_j*n.real(A)+S/2*(t_zx_i*t_zx_j - t_zy_i*t_zy_j - t_zx_i*t_zy_j - t_zy_i*t_zx_j))    +
+    return 2*1j*( t_zz_i*t_zz_j*np.imag(G*H+A*B)
+                 + S/2*(t_zx_i*t_zx_j + t_zy_i*t_zy_j)*np.imag(G+H) + S/2*(t_zx_i*t_zx_j - t_zy_i*t_zy_j)*np.imag(A+B)
+                 + S/2*(t_zx_i*t_zy_j + t_zy_i*t_zx_j)*np.real(A-B) + S/2*(t_zx_i*t_zy_j - t_zy_i*t_zx_j)*np.real(H-G)
                 )
 
+def get_ts(theta,phi,site0):
+    """Compute the parameters t_zz, t_zx and t_zy (as in notes) for sublattice A and B."""
+    result = [(np.cos(theta),-np.sin(theta)*np.cos(phi),np.sin(theta)*np.sin(phi)),
+              (-np.cos(theta),np.sin(theta)*np.cos(phi),-np.sin(theta)*np.sin(phi)) ]
+    if site0==0:    #x=y=0 site has down field -> A-site
+        return result
+    else:
+        return result[::-1]
 
 def plot_gridBZ(ax,UC):
     """Plot BZ axes and borders."""
@@ -298,7 +302,9 @@ def plot_corr(corr):
         bla_y = np.linspace(-250.250125063,250.250125063,2)
         X, Y = np.meshgrid(bla_x, bla_y)
         plt.pcolormesh(X, Y, np.zeros((1,1)), cmap='magma', vmin=0, vmax=vma)
-        ks_ws_plot.reverse()
+
+#        ks_ws_plot.reverse()
+
         for i in range(len(vals)):
             X, Y = np.meshgrid(np.array(ks_m_plot[i]), omega_mesh)
             plt.pcolormesh(X, Y, ks_ws_plot[i].reshape((1,N_omega)).T, cmap='magma', vmin=0, vmax=vma)
@@ -324,18 +330,52 @@ def extract_experimental_parameters(fn):
     """Import experimental Hamiltonian parameters"""
     with open(fn,'rb') as f:
         data = pickle.load(f)
-    print(data['xx'].keys())
-    exit()
-    pairs = list(data['xx'].keys())
-    g = np.zeros(len(pairs))
-    for i in range(len(pairs)):
-        g[i] = data['xx'][pairs[i]]
-    sites = list(data['z'].keys())
-    h = np.zeros(len(sites))
-    for i in range(len(sites)):
-        h[i] = data['z'][sites[i]]
-    return g*1000,h*1000        #put it in MHz
+    #extract Lx and Ly from filename
+    Lx = int(fn[fn.index('/')+10])
+    Ly = int(fn[fn.index('/')+12])
+    Ns = Lx*Ly
+    #Extract sites names and give them an index in the Lx*Ly 1D setting
+    dic_key = {}
+    x0,y0 = list(data['z'].keys())[0]
+    for i in range(Ns):
+        key = list(data['z'].keys())[i]
+        dic_key[key] = (key[1]-y0) + (key[0]-x0)*Ly
+    #On-site 'z' terms
+    h = np.zeros((Ns,Ns))
+    keys = list(data['z'].keys())
+    for i in range(Ns):
+        ind = dic_key[keys[i]]
+        h[ind,ind] = data['z'][keys[i]]*1000     #MHz
+    #Nearest-neighbor terms: 
+    g1 = np.zeros((Ns,Ns))
+    keys = list(data['xx'].keys())
+    for i in range(len(keys)):
+        ind_a = dic_key[keys[i][0]]
+        ind_b = dic_key[keys[i][1]]
+        g1[ind_a,ind_b] = g1[ind_b,ind_a] = data['xx'][keys[i]]*1000     #MHz
+    d1 = np.zeros((Ns,Ns))
+    keys = list(data['zz'].keys())
+    for i in range(len(keys)):
+        ind_a = dic_key[keys[i][0]]
+        ind_b = dic_key[keys[i][1]]
+        d1[ind_a,ind_b] = d1[ind_b,ind_a] = data['zz'][keys[i]]*1000     #MHz
+    #Next-nearest-neighbor terms: 
+    g2 = np.zeros((Ns,Ns))
+    keys = list(data['xix'].keys())
+    for i in range(len(keys)):
+        ind_a = dic_key[keys[i][0]]
+        ind_b = dic_key[keys[i][1]]
+        g2[ind_a,ind_b] = g2[ind_b,ind_a] = data['xix'][keys[i]]*1000     #MHz
+    return Lx,Ly,g1,g2,d1,h
 
+def get_Hamiltonian_parameters(time_steps,g1_in,g2_in,d1_in,h_in,g1_fin,g2_fin,d1_fin,h_fin):
+    """Compute g1(t), g2(t), d1(t) and h(t) for each time and site of the ramp."""
+    t_values = np.linspace(0,1,time_steps).reshape(time_steps,1,1)
+    g1_t_i = (1-t_values)*g1_in + t_values*g1_fin
+    g2_t_i = (1-t_values)*g2_in + t_values*g2_fin
+    d1_t_i = (1-t_values)*d1_in + t_values*d1_fin
+    h_t_i = (1-t_values)*h_in + t_values*h_fin
+    return g1_t_i,g2_t_i,d1_t_i,h_t_i
 
 
 
