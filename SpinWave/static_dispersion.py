@@ -33,7 +33,7 @@ for i,h in enumerate(H_list):
     thetas[i] = theta
     parameters = (S,Gamma,h,theta,phi,J,D)
     e_gs[i] = fs.get_E_GS(*parameters)
-    if 0:
+    if 1:
         epsilon = fs.get_epsilon(*parameters)
         fig = plt.figure()
         ax = fig.add_subplot(projection='3d')
@@ -46,11 +46,11 @@ for i,h in enumerate(H_list):
 fig = plt.figure()
 ax = fig.add_subplot()
 ax.plot(H_list,e_gs,'r*-',label='e_gs')
-ax.legend(loc='lower right')
+ax.legend(loc='lower left')
 ax_r = ax.twinx()
 ax_r.plot(H_list,thetas,'b*-',label='theta')
 #ax_r.plot(H_list,ps,'g*-',label='p')
-ax_r.legend(loc='lower left')
+ax_r.legend(loc='upper right')
 plt.show()
 
 
