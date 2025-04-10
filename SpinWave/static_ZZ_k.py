@@ -17,8 +17,8 @@ D1 = 0
 D2 = 0
 h_in = 30       #MHz
 #
-Lx = 30     #Linear size of lattice
-Ly = 30
+Lx = 15     #Linear size of lattice
+Ly = 15
 Ns = Lx*Ly    #number of sites
 gridk = fs.BZgrid(Lx,Ly)#BZ grid
 Gamma1 = np.cos(gridk[:,:,0])+np.cos(gridk[:,:,1])  #cos(kx) + cos(ky)

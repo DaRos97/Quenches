@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.cm import ScalarMappable
+from matplotlib.colors import Normalize
 import pickle
 
 #Lattice directions of square lattice
@@ -31,20 +33,24 @@ def get_N_12(*pars):
 def get_p_xx(theta,phi,J,D,order='canted_Neel'):
     """J and D are tuple with 1st and 2nd nn. Each can be either a number or a Ns*Ns matrix of values for site dependent case."""
     if order=='canted_Neel':
-        return (-J[0]*(np.cos(theta)**2*np.cos(phi)**2-np.sin(phi)**2+D[0]*np.sin(theta)**2*np.cos(phi)**2),
-                J[1]*(np.cos(theta)**2*np.cos(phi)**2+np.sin(phi)**2+D[1]*np.sin(theta)**2*np.cos(phi)**2))
+        return (-J[0]*(np.cos(theta)**2+D[0]*np.sin(theta)**2), -J[1]*(np.cos(theta)**2+D[1]*np.sin(theta)**2) )
+#        return (-J[0]*(np.cos(theta)**2*np.cos(phi)**2-np.sin(phi)**2+D[0]*np.sin(theta)**2*np.cos(phi)**2),
+#                J[1]*(np.cos(theta)**2*np.cos(phi)**2+np.sin(phi)**2+D[1]*np.sin(theta)**2*np.cos(phi)**2))
 def get_p_yy(theta,phi,J,D,order='canted_Neel'):
     if order=='canted_Neel':
-        return (-J[0]*(np.cos(theta)**2*np.sin(phi)**2-np.cos(phi)**2+D[0]*np.sin(theta)**2*np.sin(phi)**2),
-                J[1]*(np.cos(theta)**2*np.sin(phi)**2+np.cos(phi)**2+D[1]*np.sin(theta)**2*np.sin(phi)**2))
+        return (J[0], J[1])
+#        return (-J[0]*(np.cos(theta)**2*np.sin(phi)**2-np.cos(phi)**2+D[0]*np.sin(theta)**2*np.sin(phi)**2),
+#                J[1]*(np.cos(theta)**2*np.sin(phi)**2+np.cos(phi)**2+D[1]*np.sin(theta)**2*np.sin(phi)**2))
 def get_p_zz(theta,phi,J,D,order='canted_Neel'):
     if order=='canted_Neel':
-        return (-J[0]*(np.sin(theta)**2+D[0]*np.cos(theta)**2),
-                J[1]*(np.sin(theta)**2+D[1]*np.cos(theta)**2))
+        return (-J[0]*(np.sin(theta)**2+D[0]*np.cos(theta)**2), -J[1]*(np.sin(theta)**2+D[1]*np.cos(theta)**2) )
+#        return (-J[0]*(np.sin(theta)**2+D[0]*np.cos(theta)**2),
+#                J[1]*(np.sin(theta)**2+D[1]*np.cos(theta)**2))
 def get_p_xy(theta,phi,J,D,order='canted_Neel'):
     if order=='canted_Neel':
-        return (J[0]/2*np.sin(2*phi)*(np.cos(theta)**2+1+D[0]*np.sin(theta)**2),
-                -J[1]/2*np.sin(2*phi)*(np.cos(theta)**2-1+D[1]*np.sin(theta)**2))
+        return (0,0)
+#        return (J[0]/2*np.sin(2*phi)*(np.cos(theta)**2+1+D[0]*np.sin(theta)**2),
+#                -J[1]/2*np.sin(2*phi)*(np.cos(theta)**2-1+D[1]*np.sin(theta)**2))
 
 def get_E_0(*pars):
     """Compute E_0 as in notes."""
@@ -74,27 +80,32 @@ def get_angles(S,J_i,D_i,h_i):
     """Compute angles theta and phi of quantization axis depending on Hamiltonian parameters.
     For site-dependent Hamiltonian parameters we take the average.
     """
-    J = []
-    D = []
-    for i in range(2):
-        if not (J_i[i] == np.zeros(J_i[i].shape)).all():
-            J.append(abs(float(np.sum(J_i[i])/(J_i[i][np.nonzero(J_i[i])]).shape)))
+    if type(J_i[0]) in [float,int,np.float64]:   #if we give a single number for J1,J2,H etc.. -> static_dispersion.py
+        J = J_i
+        D = D_i
+        h = h_i
+    else:   #f we give a site dependent value of J1, j2 etc.., we need an average -> static_ZZ_*.py
+        J = []
+        D = []
+        for i in range(2):
+            if not (J_i[i] == np.zeros(J_i[i].shape)).all():
+                J.append(abs(float(np.sum(J_i[i])/(J_i[i][np.nonzero(J_i[i])]).shape)))
+            else:
+                J.append(0)
+            if not (D_i[i] == np.zeros(D_i[i].shape)).all():
+                D.append(float(np.sum(D_i[i])/(D_i[i][np.nonzero(D_i[i])]).shape))
+            else:
+                D.append(0)
+        if J[0]!=0:
+            D[0] = D[0]/J[0]        #As we defined in notes
+        if J[1]!=0:
+            D[1] = D[1]/J[1]        #As we defined in notes
+        if not (h_i == np.zeros(h_i.shape)).all():
+            h_av = float(np.sum(h_i)/(h_i[np.nonzero(h_i)]).shape)
+            h_stag = np.absolute(h_i[np.nonzero(h_i)]-h_av)
+            h = float(np.sum(h_stag)/(h_stag[np.nonzero(h_stag)]).shape)
         else:
-            J.append(0)
-        if not (D_i[i] == np.zeros(D_i[i].shape)).all():
-            D.append(float(np.sum(D_i[i])/(D_i[i][np.nonzero(D_i[i])]).shape))
-        else:
-            D.append(0)
-    if J[0]!=0:
-        D[0] = D[0]/J[0]        #As we defined in notes
-    if J[1]!=0:
-        D[1] = D[1]/J[1]        #As we defined in notes
-    if not (h_i == np.zeros(h_i.shape)).all():
-        h_av = float(np.sum(h_i)/(h_i[np.nonzero(h_i)]).shape)
-        h_stag = np.absolute(h_i[np.nonzero(h_i)]-h_av)
-        h = float(np.sum(h_stag)/(h_stag[np.nonzero(h_stag)]).shape)
-    else:
-        h = 0
+            h = 0
     if J[1]<J[0]/2 and h<4*S*(J[0]*(1-D[0])-J[1]*(1-D[1])):
         theta = np.arccos(h/(4*S*(J[0]*(1-D[0])-J[1]*(1-D[1]))))
     else:
@@ -124,8 +135,8 @@ def BZgrid(Lx,Ly):
     gridk = np.zeros((Lx,Ly,2))
     for i1 in range(Lx):
         for i2 in range(Ly):
-            gridk[i1,i2,0] = dx*(1+i1) - np.pi
-            gridk[i1,i2,1] = dy*(1+i2) - np.pi
+            gridk[i1,i2,0] = dx*(1+i1) #- np.pi
+            gridk[i1,i2,1] = dy*(1+i2) #- np.pi
     return gridk
 
 def get_Hamiltonian_rs(*parameters):
@@ -137,41 +148,40 @@ def get_Hamiltonian_rs(*parameters):
     S,Lx,Ly,h_i,theta,phi,J_i,D_i = parameters
     Ns = Lx*Ly
     ham = np.zeros((2*Ns,2*Ns),dtype=complex)
-    temp1 = np.zeros((2*Ns,2*Ns),dtype=complex)
-    temp2 = np.zeros((2*Ns,2*Ns),dtype=complex)
+    #
     p_zz = get_p_zz(theta,phi,J_i,D_i)
     p_xx = get_p_xx(theta,phi,J_i,D_i)
     p_yy = get_p_yy(theta,phi,J_i,D_i)
     p_xy = get_p_xy(theta,phi,J_i,D_i)
     #diagonal
-    ham[:Ns,:Ns] = ham[Ns:,Ns:] = h_i/2*np.cos(theta) - 2*S*np.diag(np.diagonal(p_zz[0]+p_zz[1]))
+    ham[:Ns,:Ns] = abs(h_i)/2*np.cos(theta) - S/2*np.diag(np.sum(p_zz[0],axis=0))
+    ham[Ns:,Ns:] = abs(h_i)/2*np.cos(theta) - S/2*np.diag(np.sum(p_zz[0],axis=0))
     #off_diag 1 - nn
-    off_diag_1_nn = S/2*(p_xx[0]+p_yy[0])
+    off_diag_1_nn = S/4*(p_xx[0]+p_yy[0])
     ham[:Ns,:Ns] += off_diag_1_nn
     ham[Ns:,Ns:] += off_diag_1_nn
     #off_diag 2 - nn
-    off_diag_2_nn = S/2*(p_xx[0]-p_yy[0]+2*1j*p_xy[0])
+    off_diag_2_nn = S/4*(p_xx[0]-p_yy[0]+2*1j*p_xy[0])
     ham[:Ns,Ns:] += off_diag_2_nn
-    ham[Ns:,:Ns] += off_diag_2_nn.conj()
+    ham[Ns:,:Ns] += off_diag_2_nn.T.conj().T
     return ham
 
 def get_correlator(ts_i,ts_j,S,G,H,A,B):
     """Compute real space zz correlator as in notes."""
-    t_zz_i,t_zx_i,t_zy_i = ts_i
-    t_zz_j,t_zx_j,t_zy_j = ts_j
+    t_zz_i,t_xz_i,t_yz_i = ts_i
+    t_zz_j,t_xz_j,t_yz_j = ts_j
     return 2*1j*( t_zz_i*t_zz_j*np.imag(G*H+A*B)
-                 + S/2*(t_zx_i*t_zx_j + t_zy_i*t_zy_j)*np.imag(G+H) + S/2*(t_zx_i*t_zx_j - t_zy_i*t_zy_j)*np.imag(A+B)
-                 + S/2*(t_zx_i*t_zy_j + t_zy_i*t_zx_j)*np.real(A-B) + S/2*(t_zx_i*t_zy_j - t_zy_i*t_zx_j)*np.real(H-G)
+                 + S/2*(t_xz_i*t_xz_j + t_yz_i*t_yz_j)*np.imag(G+H) + S/2*(t_xz_i*t_xz_j - t_yz_i*t_yz_j)*np.imag(A+B)
+                 + S/2*(t_xz_i*t_yz_j + t_yz_i*t_xz_j)*np.real(A-B) + S/2*(t_xz_i*t_yz_j - t_yz_i*t_xz_j)*np.real(H-G)
                 )
 
-def get_ts(theta,phi,site0):
-    """Compute the parameters t_zz, t_zx and t_zy (as in notes) for sublattice A and B."""
-    result = [(np.cos(theta),-np.sin(theta)*np.cos(phi),np.sin(theta)*np.sin(phi)),
-              (-np.cos(theta),np.sin(theta)*np.cos(phi),-np.sin(theta)*np.sin(phi)) ]
-    if site0==0:    #x=y=0 site has down field -> A-site
-        return result
-    else:
-        return result[::-1]
+def get_ts(theta,phi):
+    """Compute the parameters t_zz, t_xz and t_yz as in notes for sublattice A and B.
+    Sublattice A has negative magnetic feld.
+    """
+    result = [(np.cos(theta),-np.sin(theta),0),
+              (-np.cos(theta),np.sin(theta),0) ]
+    return result
 
 def plot_gridBZ(ax,UC):
     """Plot BZ axes and borders."""
@@ -254,75 +264,80 @@ def get_pars_fn(names,pars):
 
 def plot_corr(corr):
     """Code from Johannes.
-    Takes the i,j,t matrix of correlators and computes the Fourier transform and then plots it.
-    corr has dimension [H_list,Lx,Ly,Nt].
+    Takes the i,j,t matrix of correlators, computes the Fourier transform and then plots it.
+    corr has dimension [n_stop_ratio,Lx,Ly,Nt].
     """
     n_sr,Lx,Ly,Nt = corr.shape
-    N_omega = 2000
+    N_omega = 2000      #default from Jeronimo
     omega_list = np.linspace(-250,250,N_omega)
+    #momenta for plotting
+    kx_list = np.fft.fftshift(np.fft.fftfreq(Lx,d=1))
+    ky_list = np.fft.fftshift(np.fft.fftfreq(Ly,d=1))
+    ks = []     #mod k
+    ks_m = []   #mod_k +- 0.01
+    for kx in kx_list:
+        for ky in ky_list:
+            ks.append(np.sqrt(kx**2+ky**2))
+            ks_m.append([np.sqrt(kx**2+ky**2)-0.01, np.sqrt(kx**2+ky**2)+0.01])
+    ks = np.array(ks)
+    k_inds = np.argsort(ks)
+    ks_m = np.array(ks_m)[k_inds]   #ordered
+    vals, idx = np.unique(ks[k_inds], return_index=True)    #take only unique |k| points
+    idx = np.append(idx, len(ks))
+    #Uniform backgound
+    omega_mesh = np.linspace(-250.250125063,250.250125063,2001)
+    bla_x = np.linspace(0.,ks_m[-1][1],2)       #specific of Lx=7,Ly=6
+    bla_y = np.linspace(-250.250125063,250.250125063,2)
+    X0, Y0 = np.meshgrid(bla_x, bla_y)
     #
+    fig = plt.figure(figsize=(20.8,8))
     for p in range(n_sr):
-        plt.subplot(2,5,p+1)
-        a = corr[p] # insert matrix for stop rate ra of shape (x,y,ts), here (7,6,401)
-        #Bunch of ks
-        kx_list = np.fft.fftshift(np.fft.fftfreq(Lx,d=1))
-        ky_list = np.fft.fftshift(np.fft.fftfreq(Ly,d=1))
-        ks = []
-        ks_m = []
-        for kx in kx_list:
-            for ky in ky_list:
-                ks.append(np.sqrt(kx**2+ky**2))
-                ks_m.append([np.sqrt(kx**2+ky**2)-0.01, np.sqrt(kx**2+ky**2)+0.01])
-        ks = np.array(ks)
-        k_inds = np.argsort(ks)
-        ks_m = np.array(ks_m)[k_inds]
-        vals, idx = np.unique(ks[k_inds], return_index=True)
-        idx = np.append(idx, len(ks))
-        #
+        ax = fig.add_subplot(2,5,p+1)        #default 10 stop ratios
+        a = corr[p] # insert matrix for stop ratio of shape (x,y,Nt), here (6,7,401)
+        #Fourier transform x,y->kx,ky with fft2 for each time t
         ks_ts = np.zeros((Lx,Ly,Nt), dtype=complex)
         for t in range(Nt):
             ks_ts[:,:,t] =  np.fft.fftshift(np.fft.fft2(a[:,:,t]))
+        #Fourier transform t->Omega and flatten kx,ky
         ks_ws_flat = np.zeros((Lx*Ly,N_omega), dtype=complex)
         for kx in range(Lx):
             for ky in range(Ly):
-                i = ky + Ly*kx
-                ks_ws_flat[i,:] = np.fft.fftshift(np.fft.fft(ks_ts[kx,ky,:], n=N_omega))
+                ind = ky + Ly*kx
+                ks_ws_flat[ind,:] = np.fft.fftshift(np.fft.fft(ks_ts[kx,ky,:], n=N_omega))
+        #Take absolute value and order like the absolute values of momenta
         ks_ws_flat = np.abs(ks_ws_flat[k_inds,:])
-        #
+        #Sum values of Fourier transform in the same |k| interval
         ks_ws_plot = []
         ks_m_plot  = []
         for i in range(len(vals)):
             val_c  = np.sum(ks_ws_flat[idx[i]:idx[i+1],:], axis=0)/(idx[i+1]-idx[i])
+#            print(i,idx[i],idx[i+1],ks_m[i])
             ks_ws_plot.append(val_c)
             ks_m_plot.append(ks_m[idx[i]])
+#            input()
         vma = np.amax(ks_ws_plot)
-        #For plotting
-        omega_mesh = np.linspace(-250.250125063,250.250125063,2001)
-        bla_x = np.linspace(0.,0.7,2)
-        bla_y = np.linspace(-250.250125063,250.250125063,2)
-        X, Y = np.meshgrid(bla_x, bla_y)
-        plt.pcolormesh(X, Y, np.zeros((1,1)), cmap='magma', vmin=0, vmax=vma)
+        #Plot 0 background
+        ax.pcolormesh(X0, Y0, np.zeros((1,1)), cmap='magma', vmin=0, vmax=vma)
 
-#        ks_ws_plot.reverse()
+        ks_ws_plot.reverse()    ###################################################
 
+        #Plot single columns
+        sm = ScalarMappable(cmap='magma',norm=Normalize(vmin=0,vmax=vma))
+        sm.set_array([])
         for i in range(len(vals)):
             X, Y = np.meshgrid(np.array(ks_m_plot[i]), omega_mesh)
-            plt.pcolormesh(X, Y, ks_ws_plot[i].reshape((1,N_omega)).T, cmap='magma', vmin=0, vmax=vma)
-        plt.colorbar(label='FFT (a.u.)')
-        plt.ylim(-60,60)
+            ax.pcolormesh(X, Y, ks_ws_plot[i].reshape((1,N_omega)).T, cmap='magma', vmin=0, vmax=vma)
+        plt.colorbar(sm,ax=ax,label='FFT (a.u.)')
+        ax.set_ylim(-70,70)
         if p > 4:
-            plt.xlabel('$|k|$')
+            ax.set_xlabel('$|k|$')
         if p%5 == 0:
-            plt.ylabel('$\\omega$')
+            ax.set_ylabel('$\\omega$')
         #plt.gca().invert_xaxis()
-        plt.title('Stop ratio :$'+"{:.1f}".format(0.1*(p+1))+'$')
+        ax.set_title('Stop ratio :$'+"{:.1f}".format(0.1*(p+1))+'$')
     plt.tight_layout()
 
     plt.subplots_adjust(wspace=0.2, hspace=0.3, left=0.04, right=0.97)
-
-    fi = plt.gcf()
-    fi.set_size_inches(18.,7.)
-    # fi.savefig('corr_same.png',bbox_inches='tight',dpi=300)
 
     plt.show()
 
