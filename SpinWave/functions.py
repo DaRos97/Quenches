@@ -51,6 +51,12 @@ def get_p_xy(theta,phi,J,D,order='canted_Neel'):
         return (0,0)
 #        return (J[0]/2*np.sin(2*phi)*(np.cos(theta)**2+1+D[0]*np.sin(theta)**2),
 #                -J[1]/2*np.sin(2*phi)*(np.cos(theta)**2-1+D[1]*np.sin(theta)**2))
+def get_p_xz(theta,phi,J,D,order='canted_Neel'):
+    if order=='canted_Neel':
+        return (-J[0]/2*np.sin(2*theta)*(1-D[0]),J[1]/2*np.sin(2*theta)*(1-D[1]))
+def get_p_yz(theta,phi,J,D,order='canted_Neel'):
+    if order=='canted_Neel':
+        return (0,0)
 
 def get_E_0(*pars):
     """Compute E_0 as in notes."""
@@ -166,21 +172,85 @@ def get_Hamiltonian_rs(*parameters):
     ham[Ns:,:Ns] += off_diag_2_nn.T.conj().T
     return ham
 
-def get_correlator(ts_i,ts_j,S,G,H,A,B):
-    """Compute real space zz correlator as in notes."""
-    t_zz_i,t_xz_i,t_yz_i = ts_i
-    t_zz_j,t_xz_j,t_yz_j = ts_j
+def correlator_zz(S,Lx,Ly,t_ab,site0,ind_i,ind_j,A,B,G,H):
+    """Compute real space <[Z_i,Z_j]> correlator as in notes."""
+    ts_i = t_ab[(site0+ind_i//Ly+ind_i%Ly)%2]
+    t_zz_i = ts_i[0][2]
+    t_xz_i = ts_i[1][2]
+    t_yz_i = ts_i[2][2]
+    ts_j = t_ab[(site0+ind_j//Ly+ind_j%Ly)%2]
+    t_zz_j = ts_j[0][2]
+    t_xz_j = ts_j[1][2]
+    t_yz_j = ts_j[2][2]
+    A = A[ind_i,ind_j]
+    B = B[ind_i,ind_j]
+    G = G[ind_i,ind_j]
+    H = H[ind_i,ind_j]
     return 2*1j*( t_zz_i*t_zz_j*np.imag(G*H+A*B)
-                 + S/2*(t_xz_i*t_xz_j + t_yz_i*t_yz_j)*np.imag(G+H) + S/2*(t_xz_i*t_xz_j - t_yz_i*t_yz_j)*np.imag(A+B)
-                 + S/2*(t_xz_i*t_yz_j + t_yz_i*t_xz_j)*np.real(A-B) + S/2*(t_xz_i*t_yz_j - t_yz_i*t_xz_j)*np.real(H-G)
+                 + S/2*(t_xz_i*t_xz_j)*np.imag(G+H+A+B)
+                 + S/2*(t_yz_i*t_yz_j)*np.imag(G+H-A-B)
                 )
+def correlator_ze(S,Lx,Ly,t_ab,site0,ind_i,ind_j,A,B,G,H):
+    """Compute real space <[Z_i,E_j]> correlator as in notes.
+    Site j is where the E perturbation is applied -> we assume it is somewhere in the middle which has all 4 nearest neighbors and average over them.
+    """
+    ts_i = t_ab[(site0+ind_i//Ly+ind_i%Ly)%2]
+    ts_j = t_ab[(site0+ind_j//Ly+ind_j%Ly)%2]
+    ZE = np.zeros(A[0,0].shape,dtype=complex)
+    for ind_l in [ind_j-1,ind_j+1,ind_j-Ly,ind_j+Ly]:   #Loop over 4 nearest neighbors of j
+        ts_l = t_ab[(site0+ind_l//Ly+ind_l%Ly)%2]
+        #ZXX
+        ZE += ts_i[0][2]*ts_j[1][0]*ts_l[1][0]*S/2*(
+            (A[ind_j,ind_l,0]+B[ind_j,ind_l,0]+G[ind_j,ind_l,0]+H[ind_j,ind_l,0])*(S-G[ind_i,ind_i,0])
+            - ((B[ind_i,ind_l]+H[ind_i,ind_l])*(G[ind_i,ind_j]+A[ind_i,ind_j])+(B[ind_i,ind_j]+H[ind_i,ind_j])*(G[ind_i,ind_l]+A[ind_i,ind_l]))
+        )
+        #ZYY
+        ZE += ts_i[0][2]*ts_j[2][1]*ts_l[2][1]*S/2*(
+            (-A[ind_j,ind_l,0]-B[ind_j,ind_l,0]+G[ind_j,ind_l,0]+H[ind_j,ind_l,0])*(S-G[ind_i,ind_i,0])
+            - ((-B[ind_i,ind_l]+H[ind_i,ind_l])*(G[ind_i,ind_j]-A[ind_i,ind_j])+(-B[ind_i,ind_j]+H[ind_i,ind_j])*(G[ind_i,ind_l]-A[ind_i,ind_l]))
+        )
+        #XZX
+        ZE += ts_i[1][2]*ts_j[0][0]*ts_l[1][0]*S/2*(
+            (A[ind_i,ind_l]+B[ind_i,ind_l]+G[ind_i,ind_l]+H[ind_i,ind_l])*(S-G[ind_j,ind_j,0])
+            - ((H[ind_i,ind_j]+A[ind_i,ind_j])*(B[ind_j,ind_l,0]+H[ind_j,ind_l,0])+(G[ind_i,ind_j]+B[ind_i,ind_j])*(G[ind_j,ind_l,0]+A[ind_i,ind_l,0]))
+        )
+        #XXZ
+        ZE += ts_i[1][2]*ts_j[1][0]*ts_l[0][0]*S/2*(
+            (A[ind_i,ind_j]+B[ind_i,ind_j]+G[ind_i,ind_j]+H[ind_i,ind_j])*(S-G[ind_l,ind_l,0])
+            - ((H[ind_i,ind_l]+A[ind_i,ind_l])*(B[ind_j,ind_l,0]+G[ind_j,ind_l,0])+(G[ind_i,ind_l]+B[ind_i,ind_l])*(H[ind_j,ind_l,0]+A[ind_i,ind_l,0]))
+        )
+        #ZZZ
+        ZE += ts_i[0][2]*ts_j[0][0]*ts_l[0][0]*(
+            S**3 - S**2*(G[ind_i,ind_i,0]+G[ind_j,ind_j,0]+G[ind_l,ind_l,0])
+            + S*(G[ind_i,ind_i,0]*G[ind_j,ind_j,0]+G[ind_i,ind_i,0]*G[ind_l,ind_l,0]+G[ind_j,ind_j,0]*G[ind_l,ind_l,0]
+                 +A[ind_i,ind_j]*B[ind_i,ind_j]+A[ind_i,ind_l]*B[ind_i,ind_l]+A[ind_j,ind_l,0]*B[ind_j,ind_l,0]
+                 +G[ind_i,ind_j]*H[ind_i,ind_j]+G[ind_i,ind_l]*H[ind_i,ind_l]+G[ind_j,ind_l,0]*H[ind_j,ind_l,0]     )
+            - (G[ind_i,ind_i,0]*(G[ind_j,ind_j,0]*G[ind_l,ind_l,0]+A[ind_j,ind_l,0]*B[ind_j,ind_l,0]+G[ind_j,ind_l,0]*H[ind_j,ind_l,0])
+              +A[ind_i,ind_j]*(B[ind_i,ind_j]*G[ind_l,ind_l,0]+H[ind_i,ind_l]*B[ind_j,ind_l,0]+B[ind_i,ind_l]*H[ind_j,ind_l,0])
+              +A[ind_i,ind_l]*(H[ind_i,ind_j]*B[ind_j,ind_l,0]+B[ind_i,ind_j]*G[ind_j,ind_l,0]+B[ind_i,ind_l]*G[ind_j,ind_j,0])
+              +G[ind_i,ind_j]*(H[ind_i,ind_j]*G[ind_l,ind_l,0]+H[ind_i,ind_l]*G[ind_j,ind_l,0]+B[ind_i,ind_l]*A[ind_j,ind_l,0])
+              +G[ind_i,ind_l]*(H[ind_i,ind_j]*H[ind_j,ind_l,0]+B[ind_i,ind_j]*A[ind_j,ind_l,0]+H[ind_i,ind_l]*G[ind_j,ind_j,0])
+              )
+        )
+    return 1j/2*np.imag(ZE)
+
+get_correlator = {'zz':correlator_zz,'ze':correlator_ze}
+
 
 def get_ts(theta,phi):
-    """Compute the parameters t_zz, t_xz and t_yz as in notes for sublattice A and B.
+    """Compute the parameters t_z, t_x and t_y as in notes for sublattice A and B.
     Sublattice A has negative magnetic feld.
     """
-    result = [(np.cos(theta),-np.sin(theta),0),
-              (-np.cos(theta),np.sin(theta),0) ]
+    result = [
+        [   #sublattice A
+            (np.sin(theta)*np.cos(phi),np.sin(theta)*np.sin(phi),np.cos(theta)),  #t_zx,t_zy,t_zz
+            (np.cos(theta)*np.cos(phi),np.cos(theta)*np.sin(phi),-np.sin(theta)), #t_xx,t_xy,t_xz
+            (-np.sin(phi),np.cos(phi),0)  ],                                      #t_yx,t_yy,t_yz
+        [   #sublattice A
+            (-np.sin(theta)*np.cos(phi),-np.sin(theta)*np.sin(phi),-np.cos(theta)),  #t_zx,t_zy,t_zz
+            (-np.cos(theta)*np.cos(phi),-np.cos(theta)*np.sin(phi),np.sin(theta)),   #t_xx,t_xy,t_xz
+            (-np.sin(phi),np.cos(phi),0)  ],                                         #t_yx,t_yy,t_yz
+    ]
     return result
 
 def plot_gridBZ(ax,UC):
@@ -392,6 +462,64 @@ def get_Hamiltonian_parameters(time_steps,g1_in,g2_in,d1_in,h_in,g1_fin,g2_fin,d
     h_t_i = (1-t_values)*h_in + t_values*h_fin
     return g1_t_i,g2_t_i,d1_t_i,h_t_i
 
+######################################################################################################
+#       QUENCH FUNCTIONS
+######################################################################################################
+def Gamma1(k_grid):
+    """cos(kx)+cos(ky)"""
+    return (np.cos(k_grid[:,:,0]) + np.cos(k_grid[:,:,1])).flatten()
+
+def system_function(t,y,*args):
+    """The function to feed scipy.integrate.solve_ivp"""
+    S,hi,J1f,full_time_ramp,Lx,Ly,Gamma_1 = args
+    Ns = Lx*Ly
+    h = hi*(1-t/full_time_ramp)
+    J1 = J1f*t/full_time_ramp
+    J = (J1,0)
+    D = (0,0)
+    #Values of y
+    th = y[0]
+    ph = y[1]
+    Gk = y[2:Ns+2]
+    Hk = y[Ns+2:]
+    #Parateres
+    pxx1 = get_p_xx(th,ph,J,D)[0]
+    pyy1 = get_p_yy(th,ph,J,D)[0]
+    pzz1 = get_p_zz(th,ph,J,D)[0]
+    pxy1 = get_p_xy(th,ph,J,D)[0]
+    pxz1 = get_p_xz(th,ph,J,D)[0]
+    pyz1 = get_p_yz(th,ph,J,D)[0]
+    #Composite values
+    eps = np.sum(Gk)/Ns
+    dG_1 = np.sum(Gamma_1*Gk)/Ns
+    dH_1 = np.sum(Gamma_1*Hk)/Ns
+    #
+    result = np.zeros(y.shape,dtype=complex)  #2N+2
+    #Theta
+    result[0] = -8*pyz1*eps - 4*(np.imag(dH_1*(pxz1-1j*pyz1))+pyz1*dG_1)
+    #Phi
+    if th != 0 and 0:
+        result[1] = 8/np.sin(th)*pxz1*eps + 4/np.sin(th)*(np.real(dH_1*(pxz1-1j*pyz1))+pxz1*dG_1)
+    else:
+        result[1] = 0
+    #Gk
+    result[2:2+Ns] = -4*S*Gamma_1*((pxx1-pyy1)*np.imag(Hk)-2*pxy1*np.real(Hk))
+    #Hk
+    result[2+Ns:] = -4*1j*S*Gk*Gamma_1*(pxx1-pyy1+2*1j*pxy1) + 2*1j*Hk*(2*S*(2*pzz1-Gamma_1*(pxx1+pyy1))-h*np.cos(th))
+
+    return result
+
+def initial_condition(h_i,Lx,Ly):
+    """Compute the initial condition for the z-staggered Néel state."""
+    Ns = Lx*Ly
+    res = np.zeros(2+2*Ns,dtype=complex)
+    res[0] = np.pi/100
+    res[1] = np.pi/7*0
+    if 1:
+        res[2:2+Ns] = h_i/2*np.ones(Ns)
+    elif 0:
+        res[2:2+Ns] = np.random.rand(Ns)/10
+    return res
 
 
 

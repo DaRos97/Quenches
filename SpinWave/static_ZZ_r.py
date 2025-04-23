@@ -8,10 +8,13 @@ import sys
 from time import time
 
 disp = 0
+save_corr = 0
 plot_correlator = True
+corr_type = 'zz'if len(sys.argv)<2 else sys.argv[1]
+
 #Parameters of the ramp
 S = 0.5     #spin value
-full_time_ramp = 0.5 if len(sys.argv)<3 else float(sys.argv[2])/1000    #ramp time in ms
+full_time_ramp = 0.5  #ramp time in ms
 time_steps = 500        #of ramp
 time_step = full_time_ramp/time_steps  #time step of ramp
 #Hamiltonian parameters
@@ -23,9 +26,18 @@ if use_experimental_parameters:
     Lx,Ly,g1_in,g2_in,d1_in,h_in = fs.extract_experimental_parameters(initial_parameters_fn)
     Lx,Ly,g1_fin,g2_fin,d1_fin,h_fin = fs.extract_experimental_parameters(final_parameters_fn)
     Ns = Lx*Ly
+    g1_in *= -4
+    g1_fin *= -4
+    h_in -= np.identity(Ns)*np.sum(h_in)/Ns
+    h_fin -= np.identity(Ns)*np.sum(h_fin)/Ns
+    h_in *= 2
+    h_fin *= 2
+    print(np.diagonal(h_in))
+    print(np.diagonal(h_fin))
+    exit()
 else:
-    Lx = 15#6
-    Ly = 15#7
+    Lx = 6
+    Ly = 7
     g_val = 40
     h_val = 30
     #
@@ -51,14 +63,11 @@ else:
             h_in[iy+ix*Ly,iy+ix*Ly] = (-1)**(ix+iy)*    h_val
     h_fin = np.zeros((Ns,Ns))
 site_j = (2,3) if (Lx==6 and Ly==7) else (Lx//2,Ly//2)      #site wrt with compute the correlator
-indj = site_j[1] + site_j[0]*Ly
+ind_j = site_j[1] + site_j[0]*Ly
 site0 = 0 if h_in[0,0]<0 else 1     #decide sublattice A and B of reference lattice site
 #
 print("System size: %i x %i"%(Lx,Ly))
-if disp:    print("Computing hamiltonian parameters..")
-t_i = time()
 g1_t_i,g2_t_i,d1_t_i,h_t_i = fs.get_Hamiltonian_parameters(time_steps,g1_in,g2_in,d1_in,h_in,g1_fin,g2_fin,d1_fin,h_fin)   #parameters of Hamiltonian which depend on time
-if disp:    print("..computed in ","{:.2f}".format(time()-t_i)," sec")
 #
 full_time_measure = 0.8     #measure time in ms
 Ntimes = 401        #time steps after ramp for the measurement
@@ -72,9 +81,8 @@ for i in range(Ns):
     Gamma[i,i] = -1
     Gamma[i+Ns,i+Ns] = 1
 #Actual code
-thetas = np.zeros(10)
-ens = np.zeros(10)
 corr = np.zeros((len(stop_ratio_list),Lx,Ly,Ntimes),dtype=complex)
+corr_fn = 'data/rs_corr_zz_6x7_uniform.npy'
 for i_sr,stop_ratio in enumerate(stop_ratio_list):
     print("Stop ratio ",stop_ratio)
     indt = int(time_steps*stop_ratio)
@@ -84,51 +92,47 @@ for i_sr,stop_ratio in enumerate(stop_ratio_list):
     D_i = (d1_t_i[indt,:,:],np.zeros((Ns,Ns)))
     h_i = h_t_i[indt,:,:]
     theta,phi = fs.get_angles(S,J_i,D_i,h_i)
-    thetas[i_sr] = theta
-    #
     parameters = (S,Lx,Ly,h_i,theta,phi,J_i,D_i)
     hamiltonian = fs.get_Hamiltonian_rs(*parameters)
-    #
-    if np.max(abs(hamiltonian-hamiltonian.T.conj()))>1e-7:
-        print("Non-Hermitian Hamiltonian")
-        exit()
-    #
-    t_i = time()
+    if np.max(np.absolute(hamiltonian-hamiltonian.conj()))>1e-5:
+        print("Hamiltonian is not real! Procedure might be wrong")
+    #Para-Diagonalization
+    A = hamiltonian[:Ns,:Ns]
+    B = hamiltonian[:Ns,Ns:]
     try:
-        K = scipy.linalg.cholesky(hamiltonian)  #Upper triangular s.t. ham = K^dag @ K
+        K = scipy.linalg.cholesky(A-B)
     except:
-        print("negative eigenvalue in Hamiltonian: ",scipy.linalg.eigvalsh(hamiltonian)[0])
-        K = scipy.linalg.cholesky(hamiltonian+np.identity(2*Ns)*1e-7)  #Upper triangular s.t. ham = K^dag @ K
-    eps,U = scipy.linalg.eigh(K@Gamma@K.T.conj())
-    Mt = Gamma@np.diag(eps)
-    U = scipy.linalg.inv(K)@U@np.sqrt(Mt)
-    print("matrix U: %f"%(time()-t_i))
+        print("negative or null eigenvalue in Hamiltonian: ",scipy.linalg.eigvalsh(hamiltonian)[0])
+        K = scipy.linalg.cholesky(A-B+np.identity(Ns)*1e-7)  #Upper triangular s.t. ham = K^dag @ K
+    lam2,chi_ = scipy.linalg.eigh(K@(A+B)@K.T.conj())
+    eps = np.sqrt(lam2)         #dispersion -> positive
+    chi = chi_ / eps**(1/2)     #normalized eigenvectors
+    phi_ = K.T.conj()@chi
+    psi_ = (A+B)@phi_/eps
+    U_ = 1/2*(phi_+psi_)
+    V_ = 1/2*(phi_-psi_)
+    U = np.zeros((2*Ns,2*Ns),dtype=complex)
+    U[:Ns,:Ns] = U_
+    U[:Ns,Ns:] = V_.conj()
+    U[Ns:,:Ns] = V_
+    U[Ns:,Ns:] = U_.conj()
+    #Correlator
+    exp_e = np.exp(-1j*2*np.pi*measure_time_list[:,None]*eps[None,:])
+    A = np.einsum('tk,ik,jk->ijt',exp_e,U[Ns:,:Ns],U[Ns:,Ns:],optimize=True)
+    B = np.einsum('tk,ik,jk->ijt',exp_e,U[:Ns,:Ns],U[:Ns,Ns:],optimize=True)
+    G = np.einsum('tk,ik,jk->ijt',exp_e,U[Ns:,:Ns],U[:Ns,Ns:],optimize=True)
+    H = np.einsum('tk,ik,jk->ijt',exp_e,U[:Ns,:Ns],U[Ns:,Ns:],optimize=True)
     #
-    if 0:
-        print(np.max(np.absolute(U[:Ns,Ns:]-U[Ns:,:Ns].conj())))
-        exit()
-    #
-    exp_e = np.exp(1j*2*np.pi*measure_time_list[:,None]*eps[None,:Ns])
-    t_ab = fs.get_ts(theta,phi)
-    ts_j = t_ab[(site0+site_j[0]+site_j[1])%2]
-    t_i = time()
-    if 1:
-        big_matrix = np.einsum('tk,ik,jk->ijt',exp_e,U[:,:Ns],U[:,Ns:],optimize=True)
-#        big_matrix = (exp_e[:,None,:] * U[None,:,:Ns] ) @ U[:,Ns:].T
-#        big_matrix = np.transpose(big_matrix,(1,2,0))
-        G,H = (big_matrix[Ns:,:Ns], big_matrix[:Ns,Ns:])
-        B,A = (big_matrix[:Ns,:Ns], big_matrix[Ns:,Ns:])
-    print("big M: %f"%(time()-t_i))
-    #
-    for indi in range(Ns):
-        ind_x,ind_y = (indi//Ly,indi%Ly)
-        ts_i = t_ab[(site0+ind_x+ind_y)%2]
-        corr[i_sr,ind_x,ind_y] = fs.get_correlator(ts_i,ts_j,S,
-                                                   G[indi,indj],
-                                                   H[indi,indj],
-                                                   A[indi,indj],
-                                                   B[indi,indj],
-                                                  )
+    t_ab = fs.get_ts(theta,phi) #All t-parameters for A and B sublattice
+    for ind_i in range(Ns):
+        corr[i_sr,ind_i//Ly,ind_i%Ly] = fs.get_correlator[corr_type](
+            S,Lx,Ly,
+            t_ab,site0,ind_i,ind_j,
+            A,B,G,H
+        )
+    #Save
+    if save_corr:
+        np.save(corr_fn,corr)
 
 if plot_correlator:
     n_sr = len(stop_ratio_list)
@@ -190,7 +194,7 @@ if plot_correlator:
             ax.set_xlabel('$|k|$')
         if p%5 == 0:
             ax.set_ylabel('$\\omega$')
-        ax.set_title('Stop ratio :$'+"{:.1f}".format(0.1*(p+1))+'$')
+        ax.set_title('Stop ratio :'+"{:.3f}".format(stop_ratio_list[p]))
 
     plt.tight_layout()
 
