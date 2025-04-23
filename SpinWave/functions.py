@@ -10,65 +10,87 @@ a2 = np.array([0,1])
 b1 = np.array([2*np.pi,0])
 b2 = np.array([0,2*np.pi])
 
+def get_ts(theta,phi):
+    """Compute the parameters t_z, t_x and t_y as in notes for sublattice A and B.
+    Sublattice A has negative magnetic feld.
+    """
+    result = [
+        [   #sublattice A
+            (np.sin(theta)*np.cos(phi),np.sin(theta)*np.sin(phi),np.cos(theta)),  #t_zx,t_zy,t_zz
+            (np.cos(theta)*np.cos(phi),np.cos(theta)*np.sin(phi),-np.sin(theta)), #t_xx,t_xy,t_xz
+            (-np.sin(phi),np.cos(phi),0)  ],                                      #t_yx,t_yy,t_yz
+        [   #sublattice A
+            (-np.sin(theta)*np.cos(phi),-np.sin(theta)*np.sin(phi),-np.cos(theta)),  #t_zx,t_zy,t_zz
+            (-np.cos(theta)*np.cos(phi),-np.cos(theta)*np.sin(phi),np.sin(theta)),   #t_xx,t_xy,t_xz
+            (-np.sin(phi),np.cos(phi),0)  ],                                         #t_yx,t_yy,t_yz
+    ]
+    return result
+
+def get_ps(alpha,beta,ts,J,D,order='c-Neel'):
+    """
+    Compute coefficient p_\gamma^{alpha,beta} for a given classical order.
+    alpha=0,1,2 -> z,x,y like for ts.
+    J and D are tuple with 1st and 2nd nn. Each can be either a number or a Ns*Ns matrix of values for site dependent case.
+    """
+    if order=='c-Neel': #nn: A<->B, nnn: A<->A
+        #Nearest neighor
+        nn = J[0]*ts[0][alpha][0]*ts[1][beta][0] + J[0]*ts[0][alpha][1]*ts[1][beta][1] + J[0]*D[0]*ts[0][alpha][2]*ts[1][beta][2]
+        nnn = J[1]*ts[0][alpha][0]*ts[0][beta][0] + J[1]*ts[0][alpha][1]*ts[0][beta][1] + J[1]*D[1]*ts[0][alpha][2]*ts[0][beta][2]
+    return (nn,nnn)
+
 def get_N_11(*pars):
     """Compute N_11 as in notes."""
-    S,Gamma,h,theta,phi,J,D = pars
-    p_xx = get_p_xx(theta,phi,J,D)
-    p_yy = get_p_yy(theta,phi,J,D)
-    p_zz = get_p_zz(theta,phi,J,D)
+    S,Gamma,h,ts,theta,phi,J,D = pars
+    p_zz = get_ps(0,0,ts,J,D)
+    p_xx = get_ps(1,1,ts,J,D)
+    p_yy = get_ps(2,2,ts,J,D)
     result = h/2*np.cos(theta)
     for i in range(2):
         result += S*(Gamma[i]*(p_xx[i]+p_yy[i])/2-2*p_zz[i])
     return result
 def get_N_12(*pars):
     """Compute N_12 as in notes."""
-    S,Gamma,h,theta,phi,J,D = pars
-    p_xx = get_p_xx(theta,phi,J,D)
-    p_yy = get_p_yy(theta,phi,J,D)
-    p_xy = get_p_xy(theta,phi,J,D)
+    S,Gamma,h,ts,theta,phi,J,D = pars
+    p_xx = get_ps(1,1,ts,J,D)
+    p_yy = get_ps(2,2,ts,J,D)
+    p_xy = get_ps(1,2,ts,J,D)
     result = 0
     for i in range(2):
         result += S/2*Gamma[i]*(p_xx[i]-p_yy[i]-2*1j*p_xy[i])
     return result
-def get_p_xx(theta,phi,J,D,order='canted_Neel'):
-    """J and D are tuple with 1st and 2nd nn. Each can be either a number or a Ns*Ns matrix of values for site dependent case."""
-    if order=='canted_Neel':
-        return (-J[0]*(np.cos(theta)**2+D[0]*np.sin(theta)**2), -J[1]*(np.cos(theta)**2+D[1]*np.sin(theta)**2) )
-#        return (-J[0]*(np.cos(theta)**2*np.cos(phi)**2-np.sin(phi)**2+D[0]*np.sin(theta)**2*np.cos(phi)**2),
-#                J[1]*(np.cos(theta)**2*np.cos(phi)**2+np.sin(phi)**2+D[1]*np.sin(theta)**2*np.cos(phi)**2))
-def get_p_yy(theta,phi,J,D,order='canted_Neel'):
-    if order=='canted_Neel':
-        return (J[0], J[1])
-#        return (-J[0]*(np.cos(theta)**2*np.sin(phi)**2-np.cos(phi)**2+D[0]*np.sin(theta)**2*np.sin(phi)**2),
-#                J[1]*(np.cos(theta)**2*np.sin(phi)**2+np.cos(phi)**2+D[1]*np.sin(theta)**2*np.sin(phi)**2))
-def get_p_zz(theta,phi,J,D,order='canted_Neel'):
-    if order=='canted_Neel':
-        return (-J[0]*(np.sin(theta)**2+D[0]*np.cos(theta)**2), -J[1]*(np.sin(theta)**2+D[1]*np.cos(theta)**2) )
-#        return (-J[0]*(np.sin(theta)**2+D[0]*np.cos(theta)**2),
-#                J[1]*(np.sin(theta)**2+D[1]*np.cos(theta)**2))
-def get_p_xy(theta,phi,J,D,order='canted_Neel'):
-    if order=='canted_Neel':
-        return (0,0)
-#        return (J[0]/2*np.sin(2*phi)*(np.cos(theta)**2+1+D[0]*np.sin(theta)**2),
-#                -J[1]/2*np.sin(2*phi)*(np.cos(theta)**2-1+D[1]*np.sin(theta)**2))
-def get_p_xz(theta,phi,J,D,order='canted_Neel'):
-    if order=='canted_Neel':
-        return (-J[0]/2*np.sin(2*theta)*(1-D[0]),J[1]/2*np.sin(2*theta)*(1-D[1]))
-def get_p_yz(theta,phi,J,D,order='canted_Neel'):
-    if order=='canted_Neel':
-        return (0,0)
+
+def get_rk(*pars):
+    """
+    Compute rk as in notes.
+    Controls are neded for ZZ in k.
+    """
+    N_11 = get_N_11(*pars)
+    N_12 = get_N_12(*pars)
+    frac = np.divide(np.absolute(N_12),N_11,where=(N_11!=0))
+    result = -1/2*np.arctanh(frac,where=(frac<1))
+    result[frac>=1] = np.nan
+    return result
+
+def get_phik(*pars):
+    """Compute e^i*phik as in notes."""
+    N_12 = get_N_12(*pars)
+    result = np.exp(1j*np.angle(N_12))
+    return result
 
 def get_E_0(*pars):
     """Compute E_0 as in notes."""
-    S,Gamma,h,theta,phi,J,D = pars
-    p_zz = get_p_zz(theta,phi,J,D)
+    S,Gamma,h,ts,theta,phi,J,D = pars
+    p_zz = get_ps(0,0,ts,J,D)
     result = -h*(S+1/2)*np.cos(theta)
     for i in range(2):
         result += 2*S*(S+1)*p_zz[i]
     return result
 
 def get_epsilon(*pars):
-    """Compute dispersion epsilon as in notes."""
+    """
+    Compute dispersion epsilon as in notes.
+    Controls are neded for ZZ in k.
+    """
     N_11 = get_N_11(*pars)
     N_12 = get_N_12(*pars)
     result = np.sqrt(N_11**2-np.absolute(N_12)**2,where=(N_11**2>=np.absolute(N_12)**2))
@@ -80,7 +102,8 @@ def get_E_GS(*pars):
     E_0 = get_E_0(*pars)
     epsilon = get_epsilon(*pars)
     Ns = epsilon.shape[0]*epsilon.shape[1]
-    return E_0 + np.sum(epsilon[~np.isnan(epsilon)])/Ns
+#    return E_0 + np.sum(epsilon[~np.isnan(epsilon)])/Ns
+    return E_0 + np.sum(epsilon)/Ns
 
 def get_angles(S,J_i,D_i,h_i):
     """Compute angles theta and phi of quantization axis depending on Hamiltonian parameters.
@@ -118,21 +141,6 @@ def get_angles(S,J_i,D_i,h_i):
         theta = 0
     phi = 0
     return (theta,phi)
-
-def get_rk(*pars):
-    """Compute rk as in notes."""
-    N_11 = get_N_11(*pars)
-    N_12 = get_N_12(*pars)
-    frac = np.divide(np.absolute(N_12),N_11,where=(N_11!=0))
-    result = -1/2*np.arctanh(frac,where=(frac<1))
-    result[frac>=1] = np.nan
-    return result
-
-def get_phik(*pars):
-    """Compute e^i*phik as in notes."""
-    N_12 = get_N_12(*pars)
-    result = np.exp(1j*np.angle(N_12))
-    return result
 
 def BZgrid(Lx,Ly):
     """Compute BZ coordinates of points."""
@@ -236,22 +244,6 @@ def correlator_ze(S,Lx,Ly,t_ab,site0,ind_i,ind_j,A,B,G,H):
 
 get_correlator = {'zz':correlator_zz,'ze':correlator_ze}
 
-
-def get_ts(theta,phi):
-    """Compute the parameters t_z, t_x and t_y as in notes for sublattice A and B.
-    Sublattice A has negative magnetic feld.
-    """
-    result = [
-        [   #sublattice A
-            (np.sin(theta)*np.cos(phi),np.sin(theta)*np.sin(phi),np.cos(theta)),  #t_zx,t_zy,t_zz
-            (np.cos(theta)*np.cos(phi),np.cos(theta)*np.sin(phi),-np.sin(theta)), #t_xx,t_xy,t_xz
-            (-np.sin(phi),np.cos(phi),0)  ],                                      #t_yx,t_yy,t_yz
-        [   #sublattice A
-            (-np.sin(theta)*np.cos(phi),-np.sin(theta)*np.sin(phi),-np.cos(theta)),  #t_zx,t_zy,t_zz
-            (-np.cos(theta)*np.cos(phi),-np.cos(theta)*np.sin(phi),np.sin(theta)),   #t_xx,t_xy,t_xz
-            (-np.sin(phi),np.cos(phi),0)  ],                                         #t_yx,t_yy,t_yz
-    ]
-    return result
 
 def plot_gridBZ(ax,UC):
     """Plot BZ axes and borders."""

@@ -1,4 +1,5 @@
 import numpy as np
+import sys
 import matplotlib.pyplot as plt
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
@@ -6,6 +7,7 @@ import functions as fs
 
 #Options
 plot_correlator = True
+save_fig = 1
 superimpose_energy = 1#True
 #
 stop_ratio_list = np.linspace(0.1,1,10)     #ratios of ramp where we stop and measure
@@ -17,8 +19,10 @@ D1 = 0
 D2 = 0
 h_in = 30       #MHz
 #
-Lx = 15     #Linear size of lattice
-Ly = 15
+Lx = 6     #Linear size of lattice
+Ly = 7
+if len(sys.argv)==2:
+    Lx = Ly = int(sys.argv[1])
 Ns = Lx*Ly    #number of sites
 gridk = fs.BZgrid(Lx,Ly)#BZ grid
 Gamma1 = np.cos(gridk[:,:,0])+np.cos(gridk[:,:,1])  #cos(kx) + cos(ky)
@@ -48,39 +52,42 @@ for i_sr,stop_ratio in enumerate(stop_ratio_list):
     J = (J1,J2)
     D = (D1,D2)
     theta,phi = fs.get_angles(S,J,D,h)
-    print("Theta: ",theta)
-    px = -np.sin(theta)
-    py = 0
-    pz = np.cos(theta)
-    parameters = (S,Gamma,h,theta,phi,J,D)
-    epsilon = fs.get_epsilon(*parameters)       #dispersion
+    ts = fs.get_ts(theta,phi)
+    parameters = (S,Gamma,h,ts,theta,phi,J,D)
+    #
+    epsilon = fs.get_epsilon(*parameters)
     dispersion.append(epsilon)
-    exp_e = np.zeros((Lx,Ly,Ntimes),dtype=complex)
-    for it in range(Ntimes):    #e^{-i*t*eps}   ->  [Lx,Ly,Ntimes]
-        exp_e[:,:,it] = np.exp(-1j*2*np.pi*t_list[it]*epsilon)
+    exp_e = np.exp(-1j*2*np.pi*t_list[None,None,:]*epsilon[:,:,None])
     exp_e = np.reshape(exp_e, shape=(Lx*Ly,Ntimes))
-    exp_e[np.isnan(exp_e)] = 1          #right??
-    rk = fs.get_rk(*parameters)
+    rk = fs.get_rk(*parameters).reshape(Lx*Ly)
     phik = fs.get_phik(*parameters).reshape(Lx*Ly)
-    phik[np.isnan(phik)] = 1
-    cosh_rk = np.cosh(rk).reshape(Lx*Ly)
+    cosh_rk = np.cosh(rk)
     cosh_rk[np.isnan(cosh_rk)] = 0
     cosh_rk[np.absolute(cosh_rk)>1e3] = 0
-    sinh_rk = np.sinh(rk).reshape(Lx*Ly)
+    sinh_rk = np.sinh(rk)
     sinh_rk[np.isnan(sinh_rk)] = 0
     sinh_rk[np.absolute(sinh_rk)>1e3] = 0
-    for ii in range(Lx*Ly):     #assuming phi=0 for now -> py=0
-        ix = ii%Lx
-        iy = ii//Lx
+    tj = ts[0]
+    for ii in range(Lx*Ly): #take r_j=0 -> loop only over i. Good because we have PBC
+        ix,iy = (ii//Ly, ii%Ly)     #the way reshape works
+        ti = ts[(ix+iy)%2]
+        if ti[2][2] > 0 or tj[2][2]>0:
+            print(ti[2][2],tj[2,2])
         exp_k = (np.exp(-1j*np.dot(gridk,grid_real_space[ix,iy]))).reshape(Lx*Ly)
-        corr1 = S/2/Ns*np.einsum('i,i,ij->j',exp_k,px**2*np.absolute(cosh_rk+phik.conj()*sinh_rk)**2,exp_e,optimize=True)*(-1)**(ix+iy)
-        corr2 = np.sum( (-1)**(ix+iy)*pz**2*(S-1/Ns*sinh_rk**2) )
-        corr3 = (-1)**(ix+iy)*pz**2/Ns**2*(np.einsum('ik,jk,i,j,i,j->k',exp_e,exp_e,exp_k,exp_k,
-                                                    sinh_rk**2,cosh_rk**2,
-                                                    optimize=True) +
-                                           np.einsum('ik,jk,i,j,i,j->k',exp_e,exp_e,exp_k,exp_k,
-                                                    phik.conj()*cosh_rk*sinh_rk,phik*cosh_rk*sinh_rk,
-                                                    optimize=True) )
+        corr1 = S/2/Ns*np.einsum('kt,k,k->t',
+                                 exp_e,exp_k,
+#                                 ((ti[1][2]-1j*ti[2][2])*cosh_rk + (ti[1][2]+1j*ti[2][2])*phik.conj()*sinh_rk) * ((tj[1][2]+1j*tj[2][2])*cosh_rk + (tj[1][2]-1j*tj[2][2])*phik*sinh_rk),
+                                 ti[1][2]*tj[1][2]*(np.absolute(cosh_rk+phik.conj()*sinh_rk)**2),
+                                 optimize=True)
+        corr2 = np.sum( ti[0][2]*tj[0][2]*(S-1/Ns*sinh_rk**2) )*0
+        corr3 = ti[0][2]*tj[0][2]/Ns**2*(np.einsum('kt,qt,k,q,k,q->t',
+                                                   exp_e,exp_e,exp_k,exp_k,
+                                                   sinh_rk**2,cosh_rk**2,
+                                                   optimize=True) +
+                                         np.einsum('kt,qt,k,q,k,q->t',
+                                                   exp_e,exp_e,exp_k,exp_k,
+                                                   phik.conj()*cosh_rk*sinh_rk,phik*cosh_rk*sinh_rk,
+                                                   optimize=True)*2 )
         corr[i_sr,ix,iy] = 2*1j*np.imag(corr1 + corr2 + corr3)
 
 if plot_correlator:
@@ -140,15 +147,11 @@ if plot_correlator:
         for i in range(len(vals)):
             X, Y = np.meshgrid(np.array(ks_m_plot[i]), omega_mesh)
             ax.pcolormesh(X, Y, ks_ws_plot[i].reshape((1,N_omega)).T, cmap='magma', vmin=0, vmax=vma)
-            if superimpose_energy and 0:
-                """Scatter a red * at the value of the dispersion for that momentum -> since e plot as a function of |k|, here I just take the first instance of ks with that specific |k|. Others hopefully have the same dispersion."""
-                ind = list(ks).index(vals[i])
-                ikx,iky = (ind//Ly,ind%Ly)
-                ax.scatter(vals[i],dispersion[p][ikx,iky],color='r',marker='*',zorder=3)
         if superimpose_energy:  #Plot all dispersion points
+            gap = 0#np.min(dispersion[p])
             for ix,kx in enumerate(kx_list):
                 for iy,ky in enumerate(ky_list):
-                    ax.scatter(np.sqrt(kx**2+ky**2),dispersion[p][ix,iy],color='r',marker='*',zorder=3)
+                    ax.scatter(np.sqrt(kx**2+ky**2),gap+dispersion[p][ix,iy],color='r',marker='*',zorder=3)
         plt.colorbar(sm,ax=ax,label='FFT (a.u.)')
         ax.set_ylim(-70,70)
         if p > 4:
@@ -161,6 +164,12 @@ if plot_correlator:
 
     plt.subplots_adjust(wspace=0.2, hspace=0.3, left=0.04, right=0.97)
 
+    if save_fig:
+        figname = "Figures/zz_"+str(Lx)+'x'+str(Ly)+'_k'
+        if superimpose_energy:
+            figname += '_disp'
+        figname += '.png'
+        plt.savefig(figname)
     plt.show()
 
 
