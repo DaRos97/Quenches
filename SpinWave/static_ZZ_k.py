@@ -7,8 +7,8 @@ import functions as fs
 
 #Options
 plot_correlator = True
-save_fig = 1
-superimpose_energy = 1#True
+save_fig = 0#True
+superimpose_energy = 0#True
 #
 stop_ratio_list = np.linspace(0.1,1,10)     #ratios of ramp where we stop and measure
 #Parameters Hamiltonian

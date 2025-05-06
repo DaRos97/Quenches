@@ -180,67 +180,75 @@ def get_Hamiltonian_rs(*parameters):
     ham[Ns:,:Ns] += off_diag_2_nn.T.conj().T
     return ham
 
-def correlator_ze(S,Lx,Ly,ts,site0,ind_i,ind_j,A,B,G,H,exclude_list=[]):
-    """
-    Compute real space <[Z_i(t),E_j(0)]> correlator.
+def correlator_zz(S,Lx,Ly,ts,site0,ind_i,ind_j,A,B,G,H):
+    """Compute real space <[Z_i,Z_j]> correlator as in notes."""
+    ts_i = ts[(site0+ind_i//Ly+ind_i%Ly)%2]
+    t_zz_i = ts_i[0][2]
+    t_xz_i = ts_i[1][2]
+    t_yz_i = ts_i[2][2]
+    ts_j = ts[(site0+ind_j//Ly+ind_j%Ly)%2]
+    t_zz_j = ts_j[0][2]
+    t_xz_j = ts_j[1][2]
+    t_yz_j = ts_j[2][2]
+    A = A[ind_i,ind_j]
+    B = B[ind_i,ind_j]
+    G = G[ind_i,ind_j]
+    H = H[ind_i,ind_j]
+    ff2 = 1
+    ff4 = 1
+    return 2*1j*( t_zz_i*t_zz_j*np.imag(G*H+A*B)*ff4
+                 + S/2*( (t_xz_i*t_xz_j)*np.imag(G+H+A+B)
+                        +(t_yz_i*t_yz_j)*np.imag(G+H-A-B) )*ff2
+                )
+def correlator_ze(S,Lx,Ly,ts,site0,ind_i,ind_j,A,B,G,H):
+    """Compute real space <[Z_i,E_j]> correlator as in notes.
+    Site j is where the E perturbation is applied -> we assume it is somewhere in the middle which has all 4 nearest neighbors and average over them.
     """
     ts_i = ts[(site0+ind_i//Ly+ind_i%Ly)%2]
     ts_j = ts[(site0+ind_j//Ly+ind_j%Ly)%2]
     ZE = np.zeros(A[0,0].shape,dtype=complex)
-    ind_nn_j = get_nn(ind_j,Lx,Ly)
-    for ind_s in ind_nn_j:
-        ts_s = ts[(site0+ind_s//Ly+ind_s%Ly)%2]
-        ts_list = [ts_i, ts_j, ts_s]
-        for ops in ['ZXX','XZX','XXZ','ZZZ','ZYY']:
-            original_op = 'ZXX'
-            if ops=='ZYY':
-                original_op = 'ZYY'
-            list_terms = compute_combinations(ops,[ind_i,ind_j,ind_s],'t00',S)
-            coeff_t = compute_coeff_t(ops,original_op,ts_list)
-            for t in list_terms:
-                ZE += coeff_t * t[0] * compute_contraction(t[1],t[2],t[3],A,B,G,H,exclude_list)
-    return 2*1j/len(ind_nn_j)*np.imag(ZE)
+    ff2 = 1
+    ff4 = 1
+    ff6 = 1
+    for ind_l in [ind_j-1,ind_j+1,ind_j-Ly,ind_j+Ly]:   #Loop over 4 nearest neighbors of j
+        ts_l = ts[(site0+ind_l//Ly+ind_l%Ly)%2]
+        #ZXX
+        ZE += ts_i[0][2]*ts_j[1][0]*ts_l[1][0]*S/2*(
+            (A[ind_j,ind_l,0]+B[ind_j,ind_l,0]+G[ind_j,ind_l,0]+H[ind_j,ind_l,0])*(S*ff2-G[ind_i,ind_i,0]*ff4)
+            - ((B[ind_i,ind_l]+H[ind_i,ind_l])*(G[ind_i,ind_j]+A[ind_i,ind_j])+(B[ind_i,ind_j]+H[ind_i,ind_j])*(G[ind_i,ind_l]+A[ind_i,ind_l]))*ff4
+        )
+        #ZYY
+        ZE += ts_i[0][2]*ts_j[2][1]*ts_l[2][1]*S/2*(
+            (-A[ind_j,ind_l,0]-B[ind_j,ind_l,0]+G[ind_j,ind_l,0]+H[ind_j,ind_l,0])*(S*ff2-G[ind_i,ind_i,0]*ff4)
+            - ((-B[ind_i,ind_l]+H[ind_i,ind_l])*(G[ind_i,ind_j]-A[ind_i,ind_j])+(-B[ind_i,ind_j]+H[ind_i,ind_j])*(G[ind_i,ind_l]-A[ind_i,ind_l]))*ff4
+        )
+        #XZX
+        ZE += ts_i[1][2]*ts_j[0][0]*ts_l[1][0]*S/2*(
+            (A[ind_i,ind_l]+B[ind_i,ind_l]+G[ind_i,ind_l]+H[ind_i,ind_l])*(S*ff2-G[ind_j,ind_j,0]*ff4)
+            - ((H[ind_i,ind_j]+A[ind_i,ind_j])*(B[ind_j,ind_l,0]+H[ind_j,ind_l,0])+(G[ind_i,ind_j]+B[ind_i,ind_j])*(G[ind_j,ind_l,0]+A[ind_j,ind_l,0]))*ff4
+        )
+        #XXZ
+        ZE += ts_i[1][2]*ts_j[1][0]*ts_l[0][0]*S/2*(
+            (A[ind_i,ind_j]+B[ind_i,ind_j]+G[ind_i,ind_j]+H[ind_i,ind_j])*(S*ff2-G[ind_l,ind_l,0]*ff4)
+            - ((H[ind_i,ind_l]+A[ind_i,ind_l])*(B[ind_j,ind_l,0]+G[ind_j,ind_l,0])+(G[ind_i,ind_l]+B[ind_i,ind_l])*(H[ind_j,ind_l,0]+A[ind_j,ind_l,0]))*ff4
+        )
+        #ZZZ
+        ZE += ts_i[0][2]*ts_j[0][0]*ts_l[0][0]*(
+            S**3 - S**2*(G[ind_i,ind_i,0]+G[ind_j,ind_j,0]+G[ind_l,ind_l,0])*ff2
+            + S*(G[ind_i,ind_i,0]*G[ind_j,ind_j,0]+G[ind_i,ind_i,0]*G[ind_l,ind_l,0]+G[ind_j,ind_j,0]*G[ind_l,ind_l,0]
+                +A[ind_i,ind_j]*B[ind_i,ind_j]+A[ind_i,ind_l]*B[ind_i,ind_l]+A[ind_j,ind_l,0]*B[ind_j,ind_l,0]
+                +G[ind_i,ind_j]*H[ind_i,ind_j]+G[ind_i,ind_l]*H[ind_i,ind_l]+G[ind_j,ind_l,0]*H[ind_j,ind_l,0]     )*ff4
+            - (G[ind_i,ind_i,0]*(G[ind_j,ind_j,0]*G[ind_l,ind_l,0]+A[ind_j,ind_l,0]*B[ind_j,ind_l,0]+G[ind_j,ind_l,0]*H[ind_j,ind_l,0])
+              +A[ind_i,ind_j]*(B[ind_i,ind_j]*G[ind_l,ind_l,0]+H[ind_i,ind_l]*B[ind_j,ind_l,0]+B[ind_i,ind_l]*H[ind_j,ind_l,0])
+              +A[ind_i,ind_l]*(H[ind_i,ind_j]*B[ind_j,ind_l,0]+B[ind_i,ind_j]*G[ind_j,ind_l,0]+B[ind_i,ind_l]*G[ind_j,ind_j,0])
+              +G[ind_i,ind_j]*(H[ind_i,ind_j]*G[ind_l,ind_l,0]+H[ind_i,ind_l]*G[ind_j,ind_l,0]+B[ind_i,ind_l]*A[ind_j,ind_l,0])
+              +G[ind_i,ind_l]*(H[ind_i,ind_j]*H[ind_j,ind_l,0]+B[ind_i,ind_j]*A[ind_j,ind_l,0]+H[ind_i,ind_l]*G[ind_j,ind_j,0])
+              )*ff6
+        )
+    return 1j/2*np.imag(ZE)
 
-def correlator_ez(S,Lx,Ly,ts,site0,ind_i,ind_j,A,B,G,H,exclude_list=[]):
-    """
-    Compute real space <[E_i(t),Z_j(0)]> correlator.
-    """
-    ts_i = ts[(site0+ind_i//Ly+ind_i%Ly)%2]
-    ts_j = ts[(site0+ind_j//Ly+ind_j%Ly)%2]
-    EZ = np.zeros(A[0,0].shape,dtype=complex)
-    ind_nn_i = get_nn(ind_i,Lx,Ly)
-    for ind_r in ind_nn_i:
-        ts_r = ts[(site0+ind_r//Ly+ind_r%Ly)%2]
-        ts_list = [ts_i, ts_r, ts_j]
-        for ops in ['XXZ','XZX','ZXX','ZZZ','YYZ']:
-            original_op = 'XXZ'
-            if ops=='YYZ':
-                original_op = 'YYZ'
-            list_terms = compute_combinations(ops,[ind_i,ind_r,ind_j],'tt0',S)
-            coeff_t = compute_coeff_t(ops,original_op,ts_list)
-            for t in list_terms:
-                EZ += coeff_t * t[0] * compute_contraction(t[1],t[2],t[3],A,B,G,H,exclude_list)
-    return 2*1j/len(ind_nn_i)*np.imag(EZ)
-
-def correlator_zz(S,Lx,Ly,ts,site0,ind_i,ind_j,A,B,G,H,exclude_list=[]):
-    """
-    Compute real space <[Z_i(t),Z_j(0)]> correlator.
-    """
-    ts_i = ts[(site0+ind_i//Ly+ind_i%Ly)%2]
-    ts_j = ts[(site0+ind_j//Ly+ind_j%Ly)%2]
-    ts_list = [ts_i, ts_j]
-    ZZ = np.zeros(A[0,0].shape,dtype=complex)
-    for ops in ['XX','ZZ']:
-        original_op = 'ZZ'
-        list_terms = compute_combinations(ops,[ind_i,ind_j],'t0',S)
-        coeff_t = compute_coeff_t(ops,original_op,ts_list)
-        for t in list_terms:
-            ZZ += coeff_t * t[0] * compute_contraction(t[1],t[2],t[3],A,B,G,H,exclude_list)
-    return 2*1j*np.imag(ZZ)
-
-def correlator_ee(S,Lx,Ly,ts,site0,ind_i,ind_j,A,B,G,H,exclude_list=[]):
-    """
-    Compute real space <[E_i(t),E_j(0)]> correlator.
+def correlator_ee(S,Lx,Ly,ts,site0,ind_i,ind_j,A,B,G,H):
+    """Compute real space <[E_i(t),E_j(0)]> correlator.
     Site j is where the E perturbation is applied -> we assume it is somewhere in the middle which has all 4 nearest neighbors and average over them.
     here are too many terms so a symbolic calculation is required.
     """
@@ -265,9 +273,27 @@ def correlator_ee(S,Lx,Ly,ts,site0,ind_i,ind_j,A,B,G,H,exclude_list=[]):
                 list_terms = compute_combinations(ops,[ind_i,ind_r,ind_j,ind_s],'tt00',S)
                 coeff_t = compute_coeff_t(ops,original_op,ts_list)
                 for t in list_terms:
-                    contraction = compute_contraction(t[1],t[2],t[3],A,B,G,H,exclude_list)
-                    EE += coeff_t * t[0] * contraction
+                    EE += coeff_t * t[0] * compute_contraction(t[1],t[2],t[3],A,B,G,H)
     return 2*1j/len(ind_nn_i)/len(ind_nn_j)*np.imag(EE)
+
+def new_correlator_zz(S,Lx,Ly,ts,site0,ind_i,ind_j,A,B,G,H):
+    """
+    Compute real space <[Z_i(t),Z_j(0)]> correlator.
+    """
+    ts_i = ts[(site0+ind_i//Ly+ind_i%Ly)%2]
+    ts_j = ts[(site0+ind_j//Ly+ind_j%Ly)%2]
+    ts_list = [ts_i, ts_j]
+    ZZ = np.zeros(A[0,0].shape,dtype=complex)
+    for ops in ['XX','ZZ']:
+        original_op = 'XX'
+        list_terms = compute_combinations(ops,[ind_i,ind_j],'t0',S)
+        coeff_t = compute_coeff_t(ops,original_op,ts_list)
+        print(ops)
+        for t in list_terms:
+            print(t)
+            ZZ += coeff_t * t[0] * compute_contraction(t[1],t[2],t[3],A,B,G,H)
+        input()
+    return 2*1j*np.imag(ZZ)
 
 def generate_pairings(elements):
     """
@@ -288,7 +314,7 @@ permutation_lists = {}
 for i in range(2,16,2):
     permutation_lists[i] = generate_pairings(list(range(i)))
 
-def compute_contraction(op_list,ind_list,time_list,A,B,G,H,exclude_list=[]):
+def compute_contraction(op_list,ind_list,time_list,A,B,G,H):
     """
     Here we compute the contractions using Wick decomposition of the single operator list `op_list`, with the given sites and times.
     First we compute all the 2-operator terms.
@@ -299,11 +325,13 @@ def compute_contraction(op_list,ind_list,time_list,A,B,G,H,exclude_list=[]):
     etc..
     """
     ops_dic = {'aa':B,'bb':A,'ab':H,'ba':G}
-    if len(op_list) in [0,]+exclude_list:
-        return 0
+    if len(op_list) in [0,6,8]:
+        return 1
     perm_list = permutation_lists[len(op_list)]
     result = 0
+    print(perm_list)
     for i in range(len(perm_list)):
+        print(perm_list[i])
         temp = 1
         for j in range(len(perm_list[i])):
             op_ = op_list[perm_list[i][j][0]]+op_list[perm_list[i][j][1]]
@@ -311,6 +339,9 @@ def compute_contraction(op_list,ind_list,time_list,A,B,G,H,exclude_list=[]):
             time_ = time_list[perm_list[i][j][0]]!=time_list[perm_list[i][j][1]]
             op = ops_dic[op_][ind_[0],ind_[1]]
             temp *= op if time_ else op[0]
+            print(op_)
+            print(ind_)
+            print(time_)
         result += temp
     return result
 
@@ -376,7 +407,7 @@ def get_nn(ind,Lx,Ly):
         result.append(ind-1)
     return result
 
-get_correlator = {'zz':correlator_zz,'ze':correlator_ze,'ez':correlator_ez, 'ee':correlator_ee}
+get_correlator = {'zz':new_correlator_zz,'ze':correlator_ze, 'ee':correlator_ee}
 
 
 def plot_gridBZ(ax,UC):
@@ -669,71 +700,3 @@ def initial_condition(h_i,Lx,Ly):
 
 
 
-def old_correlator_zz(S,Lx,Ly,ts,site0,ind_i,ind_j,A,B,G,H):
-    """Compute real space <[Z_i,Z_j]> correlator as in notes."""
-    ts_i = ts[(site0+ind_i//Ly+ind_i%Ly)%2]
-    t_zz_i = ts_i[0][2]
-    t_xz_i = ts_i[1][2]
-    t_yz_i = ts_i[2][2]
-    ts_j = ts[(site0+ind_j//Ly+ind_j%Ly)%2]
-    t_zz_j = ts_j[0][2]
-    t_xz_j = ts_j[1][2]
-    t_yz_j = ts_j[2][2]
-    A = A[ind_i,ind_j]
-    B = B[ind_i,ind_j]
-    G = G[ind_i,ind_j]
-    H = H[ind_i,ind_j]
-    ff2 = 1
-    ff4 = 1
-    return 2*1j*( t_zz_i*t_zz_j*np.imag(G*H+A*B)*ff4
-                 + S/2*( (t_xz_i*t_xz_j)*np.imag(G+H+A+B)
-                        +(t_yz_i*t_yz_j)*np.imag(G+H-A-B) )*ff2
-                )
-
-
-def old_correlator_ze(S,Lx,Ly,ts,site0,ind_i,ind_j,A,B,G,H):
-    """Compute real space <[Z_i,E_j]> correlator as in notes.
-    Site j is where the E perturbation is applied -> we assume it is somewhere in the middle which has all 4 nearest neighbors and average over them.
-    """
-    ts_i = ts[(site0+ind_i//Ly+ind_i%Ly)%2]
-    ts_j = ts[(site0+ind_j//Ly+ind_j%Ly)%2]
-    ZE = np.zeros(A[0,0].shape,dtype=complex)
-    ff2 = 1
-    ff4 = 1
-    ff6 = 1
-    for ind_l in [ind_j-1,ind_j+1,ind_j-Ly,ind_j+Ly]:   #Loop over 4 nearest neighbors of j
-        ts_l = ts[(site0+ind_l//Ly+ind_l%Ly)%2]
-        #ZXX
-        ZE += ts_i[0][2]*ts_j[1][0]*ts_l[1][0]*S/2*(
-            (A[ind_j,ind_l,0]+B[ind_j,ind_l,0]+G[ind_j,ind_l,0]+H[ind_j,ind_l,0])*(S*ff2-G[ind_i,ind_i,0]*ff4)
-            - ((B[ind_i,ind_l]+H[ind_i,ind_l])*(G[ind_i,ind_j]+A[ind_i,ind_j])+(B[ind_i,ind_j]+H[ind_i,ind_j])*(G[ind_i,ind_l]+A[ind_i,ind_l]))*ff4
-        )
-        #ZYY
-        ZE += ts_i[0][2]*ts_j[2][1]*ts_l[2][1]*S/2*(
-            (-A[ind_j,ind_l,0]-B[ind_j,ind_l,0]+G[ind_j,ind_l,0]+H[ind_j,ind_l,0])*(S*ff2-G[ind_i,ind_i,0]*ff4)
-            - ((-B[ind_i,ind_l]+H[ind_i,ind_l])*(G[ind_i,ind_j]-A[ind_i,ind_j])+(-B[ind_i,ind_j]+H[ind_i,ind_j])*(G[ind_i,ind_l]-A[ind_i,ind_l]))*ff4
-        )
-        #XZX
-        ZE += ts_i[1][2]*ts_j[0][0]*ts_l[1][0]*S/2*(
-            (A[ind_i,ind_l]+B[ind_i,ind_l]+G[ind_i,ind_l]+H[ind_i,ind_l])*(S*ff2-G[ind_j,ind_j,0]*ff4)
-            - ((H[ind_i,ind_j]+A[ind_i,ind_j])*(B[ind_j,ind_l,0]+H[ind_j,ind_l,0])+(G[ind_i,ind_j]+B[ind_i,ind_j])*(G[ind_j,ind_l,0]+A[ind_j,ind_l,0]))*ff4
-        )
-        #XXZ
-        ZE += ts_i[1][2]*ts_j[1][0]*ts_l[0][0]*S/2*(
-            (A[ind_i,ind_j]+B[ind_i,ind_j]+G[ind_i,ind_j]+H[ind_i,ind_j])*(S*ff2-G[ind_l,ind_l,0]*ff4)
-            - ((H[ind_i,ind_l]+A[ind_i,ind_l])*(B[ind_j,ind_l,0]+G[ind_j,ind_l,0])+(G[ind_i,ind_l]+B[ind_i,ind_l])*(H[ind_j,ind_l,0]+A[ind_j,ind_l,0]))*ff4
-        )
-        #ZZZ
-        ZE += ts_i[0][2]*ts_j[0][0]*ts_l[0][0]*(
-            S**3 - S**2*(G[ind_i,ind_i,0]+G[ind_j,ind_j,0]+G[ind_l,ind_l,0])*ff2
-            + S*(G[ind_i,ind_i,0]*G[ind_j,ind_j,0]+G[ind_i,ind_i,0]*G[ind_l,ind_l,0]+G[ind_j,ind_j,0]*G[ind_l,ind_l,0]
-                +A[ind_i,ind_j]*B[ind_i,ind_j]+A[ind_i,ind_l]*B[ind_i,ind_l]+A[ind_j,ind_l,0]*B[ind_j,ind_l,0]
-                +G[ind_i,ind_j]*H[ind_i,ind_j]+G[ind_i,ind_l]*H[ind_i,ind_l]+G[ind_j,ind_l,0]*H[ind_j,ind_l,0]     )*ff4
-            - (G[ind_i,ind_i,0]*(G[ind_j,ind_j,0]*G[ind_l,ind_l,0]+A[ind_j,ind_l,0]*B[ind_j,ind_l,0]+G[ind_j,ind_l,0]*H[ind_j,ind_l,0])
-              +A[ind_i,ind_j]*(B[ind_i,ind_j]*G[ind_l,ind_l,0]+H[ind_i,ind_l]*B[ind_j,ind_l,0]+B[ind_i,ind_l]*H[ind_j,ind_l,0])
-              +A[ind_i,ind_l]*(H[ind_i,ind_j]*B[ind_j,ind_l,0]+B[ind_i,ind_j]*G[ind_j,ind_l,0]+B[ind_i,ind_l]*G[ind_j,ind_j,0])
-              +G[ind_i,ind_j]*(H[ind_i,ind_j]*G[ind_l,ind_l,0]+H[ind_i,ind_l]*G[ind_j,ind_l,0]+B[ind_i,ind_l]*A[ind_j,ind_l,0])
-              +G[ind_i,ind_l]*(H[ind_i,ind_j]*H[ind_j,ind_l,0]+B[ind_i,ind_j]*A[ind_j,ind_l,0]+H[ind_i,ind_l]*G[ind_j,ind_j,0])
-              )*ff6
-        )
-    return 1j/2*np.imag(ZE)
