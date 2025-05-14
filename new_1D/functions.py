@@ -18,58 +18,27 @@ def get_ramp_evolution(*args):
     energies = np.zeros(time_steps)
     print("Time evolution")
     for it in tqdm(range(time_steps)):
+        Hamiltonian = compute_H(g_t_i[it],h_t_i[it],N,1)
         if it==0:
+            E_GS,psi_GS = scipy.linalg.eigh(Hamiltonian)
             time_evolved_psi[it] = np.identity(N)
-#            time_evolved_psi[it] = scipy.linalg.eigh(compute_H(g_t_i[it],h_t_i[it],N,1))[1]
-            continue
-            indices_p = {3/6:[0,2,4], 2/6:[0,2,4,5], 1/6:[0,2,3,4,5], 4/6: [0,2], 5/6: [0,]}
-            indices_m = {3/6:[1,3,5], 2/6:[1,3], 1/6:[1,], 4/6: [1,3,4,5], 5/6: [1,2,3,4,5]}
-            if 1:
-                g_i = np.zeros(N)
-                h_i = np.zeros(N)
-                for i in range(N//6):
-                    for ip in indices_p[filling]:
-                        h_i[(N//6-1)*i+ip] = 1
-                    for im in indices_m[filling]:
-                        h_i[(N//6-1)*i+im] = -1
-                E_GS,psi_GS = scipy.linalg.eigh(compute_H(g_i,h_i,N,1))      #exact GS at t=0
-            else:
-                psi_GS = np.zeros((N,N))
-                fil = int(filling*6)
-                for i in range(N//6):
-                    for ip in range(6-fil):
-                        psi_GS[6*i+indices_p[filling][ip],modes+(6-fil)*i+ip] = 1
-                    for im in range(fil):
-                        psi_GS[6*i+indices_m[filling][im],fil*i+im] = 1
-            time_evolved_psi[it] = psi_GS
-            #
-            populations[it] = compute_populations(time_evolved_psi[it],psi_GS,modes)
         else:
-            exp_H = expm(-1j*2*np.pi*compute_H(g_t_i[it],h_t_i[it],N,1)*time_step)
+            exp_H = expm(-1j*2*np.pi*Hamiltonian*time_step)
             time_evolved_psi[it] = exp_H @ time_evolved_psi[it-1]
             #Fidelity wrt real GS
-            E_GS,psi_GS = scipy.linalg.eigh(compute_H(g_t_i[it],h_t_i[it],N,1))
+            E_GS,psi_GS = scipy.linalg.eigh(Hamiltonian)
             fidelity[it] = np.absolute(scipy.linalg.det(time_evolved_psi[it,:,:modes].T.conj()@psi_GS[:,:modes]))**2
             #Occupation of populations
             populations[it] = compute_populations(time_evolved_psi[it],psi_GS,modes)
             energies[it] = np.sum(populations[it]*E_GS)/N - np.sum(h_t_i[it])/N/2   #remove offset energy of magnetif field
+        if 0:
+            for i in range(N//2):
+                print(i)
+                print(E_GS[i])
+                print(psi_GS[:,i].T.conj()@Hamiltonian@psi_GS[:,i])
+                print(time_evolved_psi[it,:,2*i+1].T.conj()@Hamiltonian@time_evolved_psi[it,:,2*i+1])
+            input()
     return time_evolved_psi, fidelity, populations, energies
-
-def get_modes(psi,filling):
-    """Here we extract the modes of the time-evolved wavefunction which are actually occupied.
-    This is in communion with the initial state we setup at time 0 -> diagonal.
-    """
-    N = psi.shape[0]
-    indices_m = {3/6:[1,3,5], 2/6:[1,3], 1/6:[1,], 4/6: [1,3,4,5], 5/6: [1,2,3,4,5]}
-    inds = []
-    for i in range(N//6):
-        for ip in indices_m[filling]:
-           inds += [ip+i*6]
-    modes = int(N*filling)
-    result = np.zeros((N,modes),dtype=complex)
-    for i in range(modes):
-        result[:,i] = np.copy(psi[:,inds[i]])
-    return result
 
 def compute_H(g_nn,h_field,N_sites,P=1):
     """NxN fermion Hamiltonian with PBC"""
@@ -84,6 +53,25 @@ def compute_H(g_nn,h_field,N_sites,P=1):
     ham[-1,0] = P*g_nn[-1]    #*P fermion number
     ham[0,-1] = P*g_nn[-1]
     return ham
+
+def get_modes(psi,filling):
+    """
+    Here we extract the modes of the time-evolved wavefunction which are actually occupied.
+    This is in communion with the initial state we setup at time 0 -> diagonal.
+    """
+    N = psi.shape[0]
+    indices_m = {3/6:[1,3,5], 2/6:[1,3], 1/6:[1,], 4/6: [1,3,4,5], 5/6: [1,2,3,4,5]}
+    modes = int(N*filling)
+#    return psi[:,:]
+    inds = []
+    for i in range(N//6):
+        for ip in indices_m[filling]:
+           inds += [ip+i*6]
+    modes = int(N/6*len(indices_m[filling]))
+    result = np.zeros((N,modes),dtype=complex)
+    for i in range(modes):
+        result[:,i] = np.copy(psi[:,inds[i]])
+    return result
 
 def compute_correlator(correlator_type,*args):
     """Compute the correlator and its Fourier transform."""
@@ -104,6 +92,17 @@ def compute_correlator(correlator_type,*args):
             alpha = get_modes(time_evolved_psi[i_t],filling)
         else:
             alpha = np.copy(beta[:,:modes])
+        if 0 and i_sr==7:
+            H = compute_H(g_t_i[i_t],h_t_i[i_t],N,1)
+            ev = time_evolved_psi[i_t]
+            print("Energies:")
+            for i in range(N-1):
+                print("Mode ",i)
+                print("GS energy is ",E_GS[i])
+                print("energy mode is ",ev[:,i].T.conj()@H@ev[:,i])
+                print("mbah is ",H[i+1,i])
+                print('\n-------------------------------------\n')
+            input()
         #Time evolution and correlators
         U_t = [np.exp(-1j*2*np.pi*E_GS*time) for time in measure_time_list]
         G_ij = get_Gij(alpha,beta,U_t)/np.sqrt(modes)

@@ -10,7 +10,7 @@ We have PBC, 42 sites and measuring times between 0 and 800 ns.
 States are obtained through a linear ramp of total time 500 ns starting from the staggered state and arriving to the gappless state.
 Model is XX+YY + staggered Z.
 
-For fillings different from 1/2 the computation of the correlator is correct but a different averaging might have to be taken into account.
+Fillings different from 1/2 are maybe not correct yet. The time evolution is the same but we take into consideration different filled states.
 
 ## Analysis
 `analysis.py`

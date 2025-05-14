@@ -8,20 +8,25 @@ from pathlib import Path
 import sys
 import scipy
 
-
-#Relevant inputs
-correlator_type = 'zz' if len(sys.argv)<2 else sys.argv[1]
-full_time_ramp = 0.5 if len(sys.argv)<3 else float(sys.argv[2])/1000    #ramp time in ms
-filling_txt = '3%6' if len(sys.argv)<4 else sys.argv[3]+'%6'
-use_experimental_parameters = False
-use_time_evolved = True
-#Save
+if len(sys.argv)!=4:
+    print("Usage: py correlators.py arg1 arg2 arg3")
+    print("\targ1: correlator type(zz,ee, ecc)")
+    print("\targ2: ramp time (ns)")
+    print("\targ3: filling (int 0 to 6, 3 for half)")
+    exit()
+else:
+    correlator_type = sys.argv[1]
+    full_time_ramp = float(sys.argv[2])/1000    #ramp time in ms
+    filling_txt = sys.argv[3]+'%6'
+#Other optionss of calculation
+use_experimental_parameters = 1#False
+use_time_evolved = 1#True
 save_time_evolved_data = True
-save_correlator_data = 0#True
+save_correlator_data = True
 
 #Filling
 filling = int(filling_txt[0])/int(filling_txt[-1])
-print("Filling ",filling_txt,' is ',filling)
+print("Filling ",filling_txt)
 #Experimental (disordered) or uniform parameters
 txt_exp = 'expPars' if use_experimental_parameters else 'uniform'
 #Time evlution options
@@ -78,7 +83,7 @@ print("Parameters of ramp: ")
 print("Sites: ",N,"\nRamp time (ns): ",full_time_ramp*1000,"\nRamp time step (ns): ",time_step*1000)
 
 """Time evolution"""
-args_fn = [(N,0),(full_time_ramp,5),(time_step,5),(txt_exp,0),(filling_txt,0)]
+args_fn = [(N,0),(full_time_ramp,5),(time_step,5),(txt_exp,0)]
 time_evolved_psi_fn = fs.get_data_filename("time_evolved_psi",args_fn,'.npy')
 fidelity_fn = fs.get_data_filename("fidelity",args_fn,'.npy')
 populations_fn = fs.get_data_filename("populations",args_fn,'.npy')
@@ -100,7 +105,7 @@ if not use_time_evolved:
 
 """Correlator"""
 txt_wf = 'time-evolved' if use_time_evolved else 'GS-wf'
-args_corr_fn = args_fn + [(correlator_type,0),(txt_wf,0),(full_time_measure,3),(Nt,0),(Nomega,0)]
+args_corr_fn = args_fn + [(correlator_type,0),(txt_wf,0),(full_time_measure,3),(Nt,0),(Nomega,0),(filling,0)]
 correlator_fn = fs.get_data_filename('correlator',args_corr_fn,'.npy')
 correlator_spacetime_fn = fs.get_data_filename('correlator_spacetime',args_corr_fn,'.npy')
 if not Path(correlator_fn).is_file():
@@ -112,11 +117,33 @@ if not Path(correlator_fn).is_file():
 else:
     correlator = np.load(correlator_fn)
 
+if 0:   #correlator with sin(kx) in PBC
+    k_list = np.linspace(0,N-1,N)*np.pi/(N)
+    x_list = np.arange(1,N+1) - 1/2
+    fig = plt.figure(figsize=(17,8))
+    corr_st = np.load(correlator_spacetime_fn)
+    for i_sr in range(10):
+        corr_kt = np.einsum('ki,it->kt',np.cos(np.outer(k_list,x_list)),corr_st[i_sr])
+        corr_kt = np.roll(corr_kt,N//2,axis=0)
+        corr_kw = np.fft.fftshift(np.fft.fft(corr_kt,Nomega,axis=1))
+        #
+        ax = fig.add_subplot(2,5,i_sr+1)
+        pm = ax.pcolormesh(k_list, omega_list, np.abs(corr_kw).T, shading='auto', cmap='magma')
+        ax.set_ylim(-50,50)
+        ax.set_title('Stop ratio '+"{:.1f}".format((i_sr+1)*0.1))
+        plt.colorbar(pm)
+
+    fig.tight_layout()
+    plt.show()
+    exit()
+
+
+
 #########################################################################################
 #########################################################################################
 """Plots"""
 
-if plot_correlator:
+if plot_correlator and 0:       #Regular plots
     #Plot
     fig = plt.figure(figsize=(17, 8))
     txt_title = 'time evolved wavefunction' if use_time_evolved else 'ground state wavefunction'
@@ -140,9 +167,9 @@ if plot_correlator:
         if 0 and correlator_type=='zz': #plot fit       -> carefull when using experimental values of g and h
             time_steps = g_t_i.shape[0]
             i_t = int(time_steps*stop_ratio)-1
-            en_m = np.sqrt(h_t[i_t]**2+4*g_t[i_t]**2*np.cos(kx*2*np.pi+np.pi/2)**2)+abs(h_t[i_t])
-            en_M = 2*np.sqrt(h_t[i_t]**2+4*g_t[i_t]**2*np.cos(kx*np.pi+np.pi/2)**2)
-            en_ex = en_m-2*abs(h_t[i_t])
+            en_m = np.sqrt(h_t_i[i_t,0]**2+4*g_t_i[i_t,0]**2*np.cos(kx*2*np.pi+np.pi/2)**2)+abs(h_t_i[i_t,0])
+            en_M = 2*np.sqrt(h_t_i[i_t,0]**2+4*g_t_i[i_t,0]**2*np.cos(kx*np.pi+np.pi/2)**2)
+            en_ex = en_m-2*abs(h_t_i[i_t,0])
 #            ax.plot(kx,en_m,color='r')
             ax.plot(kx,-en_m,color='r')
 #            ax.plot(kx,en_M,color='g')
@@ -153,6 +180,45 @@ if plot_correlator:
     if savefig_correlator:
         correlator_figfn = fs.get_data_filename("correlator",args_corr_fn,'.png')
         plt.savefig(correlator_figfn)
+
+if plot_correlator and 1:       #Comparison with 2D
+    #Plot
+    fig = plt.figure(figsize=(17, 8))
+    txt_title = 'time evolved wavefunction' if use_time_evolved else 'ground state wavefunction'
+    plt.suptitle("Correlator "+correlator_type+", total ramp time: "+str(int(full_time_ramp*1000))+" ns, "+txt_title)
+    for i_sr in range(len(stop_ratio_list)):
+        stop_ratio = stop_ratio_list[i_sr]
+        #Plot
+        ax = fig.add_subplot(2,5,i_sr+1)
+        pm = ax.pcolormesh(kx, omega_list, (np.abs(correlator[i_sr]).T)**(1), shading='auto', cmap='magma')
+        if i_sr in [4,9]:
+            label_cm = 'Magnitude of Fourier Transform'
+        else:
+            label_cm = ''
+        plt.colorbar(pm,label=label_cm)
+        ax.set_ylim(-50,50)
+        ax.set_xlim(0,0.5)
+#        if i_sr>4:
+#            ax.set_xlabel('Momentum ($k_x$)')
+#        if i_sr in [0,5]:
+#            ax.set_ylabel(r'Frequency $\omega$ (MHz)')
+        ax.set_title('Stop ratio '+"{:.1f}".format(stop_ratio))
+        if 0 and correlator_type=='zz': #plot fit       -> carefull when using experimental values of g and h
+            time_steps = g_t_i.shape[0]
+            i_t = int(time_steps*stop_ratio)-1
+            en_m = np.sqrt(h_t_i[i_t,0]**2+4*g_t_i[i_t,0]**2*np.cos(kx*2*np.pi+np.pi/2)**2)+abs(h_t_i[i_t,0])
+            en_M = 2*np.sqrt(h_t_i[i_t,0]**2+4*g_t_i[i_t,0]**2*np.cos(kx*np.pi+np.pi/2)**2)
+            en_ex = en_m-2*abs(h_t_i[i_t,0])
+#            ax.plot(kx,en_m,color='r')
+            ax.plot(kx,-en_m,color='r')
+#            ax.plot(kx,en_M,color='g')
+            ax.plot(kx,-en_M,color='g')
+#            ax.plot(kx,en_ex,color='b')
+            ax.plot(kx,-en_ex,color='b')
+    fig.tight_layout()
+    wf_type = 't-ev' if use_time_evolved else 'GS'
+    correlator_figfn = 'figures/2D_comparison/'+correlator_type+'_'+wf_type+'.png' #fs.get_data_filename("correlator",args_corr_fn,'.png')
+    plt.savefig(correlator_figfn)
 
 if plot_fidelity:   #Plot fidelity along the ramp and quenched values of h and g
     time_steps = g_t_i.shape[0]
