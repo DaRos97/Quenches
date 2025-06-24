@@ -8,21 +8,31 @@ from pathlib import Path
 import sys
 import scipy
 
-if len(sys.argv)!=4:
+if len(sys.argv) not in [4,5]:
     print("Usage: py correlators.py arg1 arg2 arg3")
     print("\targ1: correlator type(zz,ee, ecc)")
     print("\targ2: ramp time (ns)")
     print("\targ3: filling (int 0 to 6, 3 for half)")
+    print("\targ4(optional): Temperature (float)")
     exit()
 else:
     correlator_type = sys.argv[1]
     full_time_ramp = float(sys.argv[2])/1000    #ramp time in ms
     filling_txt = sys.argv[3]+'%6'
+    if len(sys.argv)==5:
+        temperature = float(sys.argv[4])
+        use_time_evolved = False
+    else:
+        use_time_evolved = True
+        temperature = 0.
+
+    if full_time_ramp==0:
+        use_time_evolved=False
+
 #Other optionss of calculation
-use_experimental_parameters = 1#False
-use_time_evolved = 1#True
+use_experimental_parameters = 0#False
 save_time_evolved_data = True
-save_correlator_data = True
+save_correlator_data = 0
 
 #Filling
 filling = int(filling_txt[0])/int(filling_txt[-1])
@@ -72,15 +82,18 @@ else:
 g_t_i,h_t_i = fs.get_Hamiltonian_parameters(time_steps,g_in,g_fin,h_in,h_fin)   #parameters of Hamiltonian which depend on time
 kx = np.fft.fftshift(np.fft.fftfreq(N,d=1))
 
-full_time_measure = 0.8     #measure time in ms
-Nt = 401        #time steps after ramp for the measurement
-Nomega = 2000   #Number of frequency points in the Fourier transform
+full_time_measure = 0.8   #measure time in ms
+Nt = 400        #time steps after ramp for the measurement
 measure_time_list = np.linspace(0,full_time_measure,Nt)
-omega_list = np.linspace(-250,250,Nomega)
+omega_bound = Nt/full_time_measure/2
+Nomega = int(8*omega_bound)
+omega_list = np.linspace(-omega_bound,omega_bound,Nomega)
 stop_ratio_list = np.linspace(0.1,1,10)     #ratios of ramp where we stop and measure
 
 print("Parameters of ramp: ")
 print("Sites: ",N,"\nRamp time (ns): ",full_time_ramp*1000,"\nRamp time step (ns): ",time_step*1000)
+print("Measurement time: ","{:.3f}".format(full_time_measure*1000)," ns, with "+str(Nt)+" time steps")
+print("Fourier transform with bound "+"{:.1f}".format(omega_bound)+" MHz and "+str(Nomega)+" frequency steps")
 
 """Time evolution"""
 args_fn = [(N,0),(full_time_ramp,5),(time_step,5),(txt_exp,0)]
@@ -105,12 +118,14 @@ if not use_time_evolved:
 
 """Correlator"""
 txt_wf = 'time-evolved' if use_time_evolved else 'GS-wf'
-args_corr_fn = args_fn + [(correlator_type,0),(txt_wf,0),(full_time_measure,3),(Nt,0),(Nomega,0),(filling,0)]
+if temperature!=0:
+    txt_wf = "thermal-wf"
+args_corr_fn = args_fn + [(correlator_type,0),(txt_wf,0),(full_time_measure,3),(Nt,0),(Nomega,0),(filling,0),(temperature,10)]
 correlator_fn = fs.get_data_filename('correlator',args_corr_fn,'.npy')
 correlator_spacetime_fn = fs.get_data_filename('correlator_spacetime',args_corr_fn,'.npy')
 if not Path(correlator_fn).is_file():
     print("Computing correlation function ",correlator_type," with "+txt_wf+': ')
-    correlator,correlator_st = fs.compute_correlator(correlator_type,*(N,omega_list,stop_ratio_list,measure_time_list,g_t_i,h_t_i,time_evolved_psi,use_time_evolved,filling))
+    correlator,correlator_st = fs.compute_correlator(correlator_type,*(N,omega_list,stop_ratio_list,measure_time_list,g_t_i,h_t_i,time_evolved_psi,use_time_evolved,filling,temperature))
     if save_correlator_data:
         np.save(correlator_fn,correlator)
         np.save(correlator_spacetime_fn,correlator_st)
@@ -143,10 +158,12 @@ if 0:   #correlator with sin(kx) in PBC
 #########################################################################################
 """Plots"""
 
-if plot_correlator and 0:       #Regular plots
+if plot_correlator and 1:       #Regular plots
     #Plot
     fig = plt.figure(figsize=(17, 8))
     txt_title = 'time evolved wavefunction' if use_time_evolved else 'ground state wavefunction'
+    if temperature!=0:
+        txt_title = 'thermal wavefunction'
     plt.suptitle("Correlator "+correlator_type+", total ramp time: "+str(int(full_time_ramp*1000))+" ns, "+txt_title)
     for i_sr in range(len(stop_ratio_list)):
         stop_ratio = stop_ratio_list[i_sr]
@@ -181,7 +198,7 @@ if plot_correlator and 0:       #Regular plots
         correlator_figfn = fs.get_data_filename("correlator",args_corr_fn,'.png')
         plt.savefig(correlator_figfn)
 
-if plot_correlator and 1:       #Comparison with 2D
+if plot_correlator and 0:       #Comparison with 2D
     #Plot
     fig = plt.figure(figsize=(17, 8))
     txt_title = 'time evolved wavefunction' if use_time_evolved else 'ground state wavefunction'

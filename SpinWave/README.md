@@ -1,13 +1,13 @@
 ## Spin wave calculations for 2D XX + staggered h model
 
 # Classical configuration
-`j2_energy.py` computes the classical spin configuration when second nn coupling is on.
+`classical_j2_energy.py` computes the classical spin configuration when second nn coupling is on.
 
 # Static spin wave analysis
 In `static_dispersion.py` we compute the dispersion for different fields and J1-D1-J2-D2.
 In `static_ZZ_k.py` we compute the ZZ correlator using the Bogoliubov transformation and momentum space, so in the periodic case.
-in `static_ZZ_r.py` we compute the ZZ correlator using the real space wavefunction which works better for direct comparison with experiments (finite system size).
-
+In `static_corr_r.py` we compute the correlators using the real space wavefunction which works better for direct comparison with experiments (finite system size).
+In `meanField.py` we write down the Bogoliubov transformation in real space for computing the correct Fourier transform of an open system.
 
 #Introduction
 

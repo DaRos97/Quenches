@@ -75,7 +75,7 @@ def get_modes(psi,filling):
 
 def compute_correlator(correlator_type,*args):
     """Compute the correlator and its Fourier transform."""
-    N,omega_list,stop_ratio_list,measure_time_list,g_t_i,h_t_i,time_evolved_psi,use_time_evolved,filling = args
+    N,omega_list,stop_ratio_list,measure_time_list,g_t_i,h_t_i,time_evolved_psi,use_time_evolved,filling,temperature = args
     modes = int(N*filling)
     Nt = len(measure_time_list)
     Nomega = len(omega_list)
@@ -83,6 +83,11 @@ def compute_correlator(correlator_type,*args):
     #
     corr_kw = np.zeros((len(stop_ratio_list),N,Nomega),dtype=complex)
     corr_spacetime = np.zeros((len(stop_ratio_list),N,Nt),dtype=complex)
+    #Thermal state
+    func_Gij = get_Gij if temperature==0 else get_GijT
+    func_Hij = get_Hij if temperature==0 else get_HijT
+    #
+    func_corr = dic_correlators[correlator_type]
     for i_sr in tqdm(range(len(stop_ratio_list))):
         stop_ratio = stop_ratio_list[i_sr]
         i_t = int(time_steps*stop_ratio)-1
@@ -90,8 +95,10 @@ def compute_correlator(correlator_type,*args):
         if use_time_evolved:
 #            alpha = np.copy(time_evolved_psi[i_t][:,:modes])
             alpha = get_modes(time_evolved_psi[i_t],filling)
-        else:
+        elif temperature==0:
             alpha = np.copy(beta[:,:modes])
+        else:
+            alpha = np.copy(beta)
         if 0 and i_sr==7:
             H = compute_H(g_t_i[i_t],h_t_i[i_t],N,1)
             ev = time_evolved_psi[i_t]
@@ -105,11 +112,11 @@ def compute_correlator(correlator_type,*args):
             input()
         #Time evolution and correlators
         U_t = [np.exp(-1j*2*np.pi*E_GS*time) for time in measure_time_list]
-        G_ij = get_Gij(alpha,beta,U_t)/np.sqrt(modes)
-        H_ij = get_Hij(alpha,beta,U_t)/np.sqrt(modes)
+        fermi_dirac = np.diag(1/(np.exp(E_GS/temperature)+1)) if temperature!=0 else 0
+        G_ij = func_Gij(alpha,beta,U_t,fermi_dirac)/np.sqrt(modes)
+        H_ij = func_Hij(alpha,beta,U_t,fermi_dirac)/np.sqrt(modes)
         #Correlator in space-time: here we decide which correlator we are computing
         corr_xt = np.zeros((N,Nt),dtype=complex)
-        func_corr = dic_correlators[correlator_type]
         refs = [0,]
         for ref in refs:
             for i in range(N):
@@ -125,16 +132,16 @@ def correlator_zz(G,H,i,ref=0):
     return 2*1j*np.imag(G[:,i,0]*H[:,i,0])
 def correlator_ee(G,H,i,ref=0):
     ip1 = (i+1)%G.shape[1]
-    return 2*1j*np.imag(G[:,i,1]*H[:,ip1,0]+G[:,i,0]*H[:,ip1,1]+G[:,ip1,1]*H[:,i,0]+G[:,ip1,0]*H[:,i,1])
+    return 2*1j*np.imag(G[:,i,1]*H[:,ip1,0]+G[:,i,0]*H[:,ip1,1]+G[:,ip1,1]*H[:,i,0]+G[:,ip1,0]*H[:,i,1])/4
 def correlator_jj(G,H,i,ref=0):
     ip1 = (i+1)%G.shape[1]
     return -2*1j*np.imag(G[:,i,1]*H[:,ip1,0]-G[:,i,0]*H[:,ip1,1]-G[:,ip1,1]*H[:,i,0]+G[:,ip1,0]*H[:,i,1])
 def correlator_ez(G,H,i,ref=0):
     ip1 = (i+1)%G.shape[1]
-    return 2*1j*np.imag(G[:,i,0]*H[:,ip1,0]+G[:,ip1,0]*H[:,i,0])
+    return 2*1j*np.imag(G[:,i,0]*H[:,ip1,0]+G[:,ip1,0]*H[:,i,0])/2
 def correlator_ze(G,H,i,ref=0):
     ip1 = (i+1)%G.shape[1]
-    return 2*1j*np.imag(G[:,i,ref+1]*H[:,i,ref]+G[:,i,ref]*H[:,i,ref+1])
+    return 2*1j*np.imag(G[:,i,ref+1]*H[:,i,ref]+G[:,i,ref]*H[:,i,ref+1])/2
 def correlator_jz(G,H,i,ref=0):
     ip1 = (i+1)%G.shape[1]
     return -2*np.imag(G[:,i,0]*H[:,ip1,0]-G[:,ip1,0]*H[:,i,0])
@@ -143,10 +150,10 @@ def correlator_zj(G,H,i,ref=0):
     return -2*np.imag(G[:,i,1]*H[:,i,0]-G[:,i,0]*H[:,i,1])
 def correlator_ej(G,H,i,ref=0):
     ip1 = (i+1)%G.shape[1]
-    return -2*np.imag(G[:,i,1]*H[:,ip1,0]-G[:,i,0]*H[:,ip1,1]+G[:,ip1,1]*H[:,i,0]-G[:,ip1,0]*H[:,i,1])
+    return -2*np.imag(G[:,i,1]*H[:,ip1,0]-G[:,i,0]*H[:,ip1,1]+G[:,ip1,1]*H[:,i,0]-G[:,ip1,0]*H[:,i,1])/2
 def correlator_je(G,H,i,ref=0):
     ip1 = (i+1)%G.shape[1]
-    return -2*np.imag(G[:,i,1]*H[:,ip1,0]+G[:,i,0]*H[:,ip1,1]-G[:,ip1,1]*H[:,i,0]-G[:,ip1,0]*H[:,i,1])
+    return -2*np.imag(G[:,i,1]*H[:,ip1,0]+G[:,i,0]*H[:,ip1,1]-G[:,ip1,1]*H[:,i,0]-G[:,ip1,0]*H[:,i,1])/2
 
 dic_correlators = {
     'zz':correlator_zz,
@@ -167,14 +174,23 @@ def compute_populations(psi_t,psi_GS,modes):
     result = np.real(np.diagonal(beta.T.conj()@alpha@alpha.T.conj()@beta))
     return result
 
-def get_Gij(alpha,beta,U):
+def get_Gij(alpha,beta,U,fermi_dirac):
     """Compute correlator <c_i(t)^dag c_j(0)>"""
     return np.array([(alpha@alpha.T.conj()@beta@np.diag(U[i_t])@beta.T.conj()).T for i_t in range(len(U))])
 
-def get_Hij(alpha,beta,U):
+def get_Hij(alpha,beta,U,fermi_dirac):
     """Compute correlator <c_i(t) c_j(0)^dag>"""
     modes = alpha.shape[1]
     return np.array([modes*beta@np.diag(U[i_t].conj())@beta.T.conj() - beta@np.diag(U[i_t].conj())@beta.T.conj()@alpha@alpha.T.conj() for i_t in range(len(U))])
+
+def get_GijT(alpha,beta,U,fermi_dirac):
+    """Compute correlator <c_i(t)^dag c_j(0)> in a thermal state"""
+    return np.array([(beta@np.diag(U[i_t])@fermi_dirac@beta.T.conj()).T for i_t in range(len(U))])
+
+def get_HijT(alpha,beta,U,fermi_dirac):
+    """Compute correlator <c_i(t) c_j(0)^dag> in a thermal state"""
+    modes = alpha.shape[1]
+    return np.array([modes*beta@np.diag(U[i_t].conj())@beta.T.conj() - beta@np.diag(U[i_t].conj())@beta.T.conj()@alpha@fermi_dirac@alpha.T.conj() for i_t in range(len(U))])
 
 def get_Hamiltonian_parameters(time_steps,g_in,g_fin,h_in,h_fin):
     """Compute g(t) and h(t) for each time and site of the ramp."""

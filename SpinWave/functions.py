@@ -1,14 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.cm import ScalarMappable
-from matplotlib.colors import Normalize
+import matplotlib.colors as mcolors
+from matplotlib.colors import Normalize, LogNorm
 import pickle
-
-#Lattice directions of square lattice
-a1 = np.array([1,0])
-a2 = np.array([0,1])
-b1 = np.array([2*np.pi,0])
-b2 = np.array([0,2*np.pi])
+from scipy.fft import fftfreq, fftshift, fft, fft2, dstn
+from collections import Counter     #for Bogoliubov momentum
 
 def get_ts(theta,phi):
     """Compute the parameters t_z, t_x and t_y as in notes for sublattice A and B.
@@ -19,7 +16,7 @@ def get_ts(theta,phi):
             (np.sin(theta)*np.cos(phi),np.sin(theta)*np.sin(phi),np.cos(theta)),  #t_zx,t_zy,t_zz
             (np.cos(theta)*np.cos(phi),np.cos(theta)*np.sin(phi),-np.sin(theta)), #t_xx,t_xy,t_xz
             (-np.sin(phi),np.cos(phi),0)  ],                                      #t_yx,t_yy,t_yz
-        [   #sublattice A
+        [   #sublattice B
             (-np.sin(theta)*np.cos(phi),-np.sin(theta)*np.sin(phi),-np.cos(theta)),  #t_zx,t_zy,t_zz
             (-np.cos(theta)*np.cos(phi),-np.cos(theta)*np.sin(phi),np.sin(theta)),   #t_xx,t_xy,t_xz
             (-np.sin(phi),np.cos(phi),0)  ],                                         #t_yx,t_yy,t_yz
@@ -34,7 +31,7 @@ def get_ps(alpha,beta,ts,J,D,order='c-Neel'):
     """
     if order=='c-Neel': #nn: A<->B, nnn: A<->A
         #Nearest neighor
-        nn = J[0]*ts[0][alpha][0]*ts[1][beta][0] + J[0]*ts[0][alpha][1]*ts[1][beta][1] + J[0]*D[0]*ts[0][alpha][2]*ts[1][beta][2]
+        nn =  J[0]*ts[0][alpha][0]*ts[1][beta][0] + J[0]*ts[0][alpha][1]*ts[1][beta][1] + J[0]*D[0]*ts[0][alpha][2]*ts[1][beta][2]
         nnn = J[1]*ts[0][alpha][0]*ts[0][beta][0] + J[1]*ts[0][alpha][1]*ts[0][beta][1] + J[1]*D[1]*ts[0][alpha][2]*ts[0][beta][2]
     return (nn,nnn)
 
@@ -94,7 +91,7 @@ def get_epsilon(*pars):
     N_11 = get_N_11(*pars)
     N_12 = get_N_12(*pars)
     result = np.sqrt(N_11**2-np.absolute(N_12)**2,where=(N_11**2>=np.absolute(N_12)**2))
-    result[N_11**2<np.absolute(N_12)**2] = 0
+#    result[N_11**2<np.absolute(N_12)**2] = 0
     return result
 
 def get_E_GS(*pars):
@@ -106,8 +103,10 @@ def get_E_GS(*pars):
     return E_0 + np.sum(epsilon)/Ns
 
 def get_angles(S,J_i,D_i,h_i):
-    """Compute angles theta and phi of quantization axis depending on Hamiltonian parameters.
+    """
+    Compute angles theta and phi of quantization axis depending on Hamiltonian parameters.
     For site-dependent Hamiltonian parameters we take the average.
+    Just for c-Neel phase.
     """
     if type(J_i[0]) in [float,int,np.float64]:   #if we give a single number for J1,J2,H etc.. -> static_dispersion.py
         J = J_i
@@ -139,11 +138,14 @@ def get_angles(S,J_i,D_i,h_i):
         theta = np.arccos(h/(4*S*(J[0]*(1-D[0])-J[1]*(1-D[1]))))
     else:
         theta = 0
+    #
     phi = 0
     return (theta,phi)
 
 def BZgrid(Lx,Ly):
-    """Compute BZ coordinates of points."""
+    """
+    Compute BZ coordinates of points.
+    """
     dx = 2*np.pi/Lx
     dy = 2*np.pi/Ly
     gridk = np.zeros((Lx,Ly,2))
@@ -161,21 +163,26 @@ def get_Hamiltonian_rs(*parameters):
     """
     S,Lx,Ly,h_i,ts,theta,phi,J_i,D_i = parameters
     Ns = Lx*Ly
-    ham = np.zeros((2*Ns,2*Ns),dtype=complex)
     #
     p_zz = get_ps(0,0,ts,J_i,D_i)
     p_xx = get_ps(1,1,ts,J_i,D_i)
     p_yy = get_ps(2,2,ts,J_i,D_i)
     p_xy = get_ps(1,2,ts,J_i,D_i)
+#    print(np.sum(p_zz[0],axis=0))
+#    input()
+    fac0 = 1#2      #Need to change this in notes -> counting of sites from 2 to 1 sites per UC
+    fac1 = 1#2
+    fac2 = 2#4
+    ham = np.zeros((2*Ns,2*Ns),dtype=complex)
     #diagonal
-    ham[:Ns,:Ns] = abs(h_i)/2*np.cos(theta) - S/2*np.diag(np.sum(p_zz[0],axis=0))
-    ham[Ns:,Ns:] = abs(h_i)/2*np.cos(theta) - S/2*np.diag(np.sum(p_zz[0],axis=0))
+    ham[:Ns,:Ns] = abs(h_i)/fac0*np.cos(theta) - S/fac1*np.diag(np.sum(p_zz[0],axis=0))
+    ham[Ns:,Ns:] = abs(h_i)/fac0*np.cos(theta) - S/fac1*np.diag(np.sum(p_zz[0],axis=0))
     #off_diag 1 - nn
-    off_diag_1_nn = S/4*(p_xx[0]+p_yy[0])
+    off_diag_1_nn = S/fac2*(p_xx[0]+p_yy[0])
     ham[:Ns,:Ns] += off_diag_1_nn
     ham[Ns:,Ns:] += off_diag_1_nn
     #off_diag 2 - nn
-    off_diag_2_nn = S/4*(p_xx[0]-p_yy[0]+2*1j*p_xy[0])
+    off_diag_2_nn = S/fac2*(p_xx[0]-p_yy[0]+2*1j*p_xy[0])
     ham[:Ns,Ns:] += off_diag_2_nn
     ham[Ns:,:Ns] += off_diag_2_nn.T.conj().T
     return ham
@@ -201,6 +208,38 @@ def correlator_ze(S,Lx,Ly,ts,site0,ind_i,ind_j,A,B,G,H,exclude_list=[]):
                 ZE += coeff_t * t[0] * compute_contraction(t[1],t[2],t[3],A,B,G,H,exclude_list)
     return 2*1j/len(ind_nn_j)*np.imag(ZE)
 
+def correlator_zz(S,Lx,Ly,ts,site0,ind_i,ind_j,A,B,G,H,exclude_list=[]):
+    """
+    Compute real space <[Z_i(t),Z_j(0)]> correlator.
+    """
+    ts_i = ts[(site0+ind_i//Ly+ind_i%Ly)%2]
+    ts_j = ts[(site0+ind_j//Ly+ind_j%Ly)%2]
+    ts_list = [ts_i, ts_j]
+    ZZ = np.zeros(A[0,0].shape,dtype=complex)
+    for ops in ['XX','ZZ']:
+        original_op = 'ZZ'
+        list_terms = compute_combinations(ops,[ind_i,ind_j],'t0',S)
+        coeff_t = compute_coeff_t(ops,original_op,ts_list)
+        for t in list_terms:
+            ZZ += coeff_t * t[0] * compute_contraction(t[1],t[2],t[3],A,B,G,H,exclude_list)
+    return 2*1j*np.imag(ZZ)
+
+def correlator_xx(S,Lx,Ly,ts,site0,ind_i,ind_j,A,B,G,H,exclude_list=[]):
+    """
+    Compute real space <[X_i(t),X_j(0)]> correlator.
+    """
+    ts_i = ts[(site0+ind_i//Ly+ind_i%Ly)%2]
+    ts_j = ts[(site0+ind_j//Ly+ind_j%Ly)%2]
+    ts_list = [ts_i, ts_j]
+    XX = np.zeros(A[0,0].shape,dtype=complex)
+    for ops in ['XX','ZZ']:
+        original_op = 'XX'
+        list_terms = compute_combinations(ops,[ind_i,ind_j],'t0',S)
+        coeff_t = compute_coeff_t(ops,original_op,ts_list)
+        for t in list_terms:
+            XX += coeff_t * t[0] * compute_contraction(t[1],t[2],t[3],A,B,G,H,exclude_list)
+    return 2*1j*np.imag(XX)
+
 def correlator_ez(S,Lx,Ly,ts,site0,ind_i,ind_j,A,B,G,H,exclude_list=[]):
     """
     Compute real space <[E_i(t),Z_j(0)]> correlator.
@@ -222,33 +261,19 @@ def correlator_ez(S,Lx,Ly,ts,site0,ind_i,ind_j,A,B,G,H,exclude_list=[]):
                 EZ += coeff_t * t[0] * compute_contraction(t[1],t[2],t[3],A,B,G,H,exclude_list)
     return 2*1j/len(ind_nn_i)*np.imag(EZ)
 
-def correlator_zz(S,Lx,Ly,ts,site0,ind_i,ind_j,A,B,G,H,exclude_list=[]):
-    """
-    Compute real space <[Z_i(t),Z_j(0)]> correlator.
-    """
-    ts_i = ts[(site0+ind_i//Ly+ind_i%Ly)%2]
-    ts_j = ts[(site0+ind_j//Ly+ind_j%Ly)%2]
-    ts_list = [ts_i, ts_j]
-    ZZ = np.zeros(A[0,0].shape,dtype=complex)
-    for ops in ['XX','ZZ']:
-        original_op = 'ZZ'
-        list_terms = compute_combinations(ops,[ind_i,ind_j],'t0',S)
-        coeff_t = compute_coeff_t(ops,original_op,ts_list)
-        for t in list_terms:
-            ZZ += coeff_t * t[0] * compute_contraction(t[1],t[2],t[3],A,B,G,H,exclude_list)
-    return 2*1j*np.imag(ZZ)
-
 def correlator_ee(S,Lx,Ly,ts,site0,ind_i,ind_j,A,B,G,H,exclude_list=[]):
     """
     Compute real space <[E_i(t),E_j(0)]> correlator.
-    Site j is where the E perturbation is applied -> we assume it is somewhere in the middle which has all 4 nearest neighbors and average over them.
-    here are too many terms so a symbolic calculation is required.
+    Site j is where the E perturbation is applied -> we assume it is
+    somewhere in the middle which has all 4 nearest neighbors and average
+    over them.
     """
     ts_i = ts[(site0+ind_i//Ly+ind_i%Ly)%2]
     ts_j = ts[(site0+ind_j//Ly+ind_j%Ly)%2]
     EE = np.zeros(A[0,0].shape,dtype=complex)
     ind_nn_i = get_nn(ind_i,Lx,Ly)
-    ind_nn_j = get_nn(ind_j,Lx,Ly)
+    ind_nn_j = [ind_j,]
+#    ind_nn_j = get_nn(ind_j,Lx,Ly)
     for ind_r in ind_nn_i:
         ts_r = ts[(site0+ind_r//Ly+ind_r%Ly)%2]
         for ind_s in ind_nn_j:
@@ -376,7 +401,258 @@ def get_nn(ind,Lx,Ly):
         result.append(ind-1)
     return result
 
-get_correlator = {'zz':correlator_zz,'ze':correlator_ze,'ez':correlator_ez, 'ee':correlator_ee}
+get_correlator = {'zz':correlator_zz,'xx':correlator_xx,'ze':correlator_ze,'ez':correlator_ez, 'ee':correlator_ee}
+
+def get_parameters(use_experimental_parameters,Lx,Ly,time_steps,g_val,h_val):
+    """
+    Import Hamiltonian parameters either from file (experimental ones) or by uniform default values.
+    """
+    if not use_experimental_parameters:
+        Ns = Lx*Ly
+        g1_in = np.zeros((Ns,Ns))
+        g1_fin = np.zeros((Ns,Ns))
+        for ix in range(Lx):
+            for iy in range(Ly):
+                ind = iy+ix*Ly
+                ind_plus_y = ind+1
+                if ind_plus_y//Ly==ind//Ly:
+                    g1_fin[ind,ind_plus_y] = g1_fin[ind_plus_y,ind] = g_val
+                ind_plus_x = ind+Ly
+                if ind_plus_x<Lx*Ly:
+                    g1_fin[ind,ind_plus_x] = g1_fin[ind_plus_x,ind] = g_val
+        g2_in = np.zeros((Ns,Ns))
+        g2_fin = np.zeros((Ns,Ns))
+        d1_in = np.zeros((Ns,Ns))
+        d1_fin = np.zeros((Ns,Ns))
+        h_in = np.zeros((Ns,Ns))
+        for ix in range(Lx):
+            for iy in range(Ly):
+                h_in[iy+ix*Ly,iy+ix*Ly] = -(-1)**(ix+iy)*    h_val
+        h_fin = np.zeros((Ns,Ns))
+    else:       #not implemented yet
+        print("Using experimental parameters")
+        initial_parameters_fn = 'exp_input/20250324_6x7_2D_StaggeredFrequency_0MHz_5.89_.p'
+        final_parameters_fn = 'exp_input/20250324_6x7_2D_IntFrequency_10MHz_5.89_.p'
+        Lx,Ly,g1_in,g2_in,d1_in,h_in = fs.extract_experimental_parameters(initial_parameters_fn)
+        Lx,Ly,g1_fin,g2_fin,d1_fin,h_fin = fs.extract_experimental_parameters(final_parameters_fn)
+        Ns = Lx*Ly
+        g1_in *= -4
+        g1_fin *= -4
+        h_in -= np.identity(Ns)*np.sum(h_in)/Ns
+        h_fin -= np.identity(Ns)*np.sum(h_fin)/Ns
+        h_in *= 2
+        h_fin *= 2
+        print(np.diagonal(h_in))
+        print(np.diagonal(h_fin))
+        exit()
+    g1_t_i,g2_t_i,d1_t_i,h_t_i = get_time_parameters(time_steps,g1_in,g2_in,d1_in,h_in,g1_fin,g2_fin,d1_fin,h_fin)   #parameters of Hamiltonian which depend on time
+    return g1_t_i,g2_t_i,d1_t_i,h_t_i
+
+def get_time_parameters(time_steps,g1_in,g2_in,d1_in,h_in,g1_fin,g2_fin,d1_fin,h_fin):
+    """
+    Compute g1(t), g2(t), d1(t) and h(t) for each time and site of the ramp.
+    """
+    t_values = np.linspace(0,1,time_steps).reshape(time_steps,1,1)
+    g1_t_i = (1-t_values)*g1_in + t_values*g1_fin
+    g2_t_i = (1-t_values)*g2_in + t_values*g2_fin
+    d1_t_i = (1-t_values)*d1_in + t_values*d1_fin
+    h_t_i = (1-t_values)*h_in + t_values*h_fin
+    return g1_t_i,g2_t_i,d1_t_i,h_t_i
+
+def fourier_fft(correlator_xt,N_omega):
+    """
+    Compute the standard 2D Fourier transform.
+    In time we always use fft.
+    """
+    n_sr, Lx, Ly, Nt = correlator_xt.shape
+    correlator_kw = np.zeros((n_sr,Lx,Ly,N_omega),dtype=complex)
+    for i_sr in range(n_sr):
+        temp = np.zeros((Lx,Ly,Nt),dtype=complex)
+        for it in range(Nt):
+            temp[:,:,it] = fftshift(fft2(correlator_xt[i_sr,:,:,it],norm='ortho'))
+        for ix in range(Lx):
+            for iy in range(Ly):
+                correlator_kw[i_sr,ix,iy] = fftshift(fft(temp[ix,iy],n=N_omega))
+    # Momenta
+    return correlator_kw
+
+def fourier_dst(correlator_xt,N_omega=2000,type_dst=1):
+    """
+    Compute the Discrete Sin Transform since we have open BC.
+    In time we always use fft.
+    correlator_xt has shape (n_sr, Lx, Ly, Nt) with n_sr number of stop ratios (10) and Nt number of time steps (400) in the measurement
+    """
+    n_sr, Lx, Ly, Nt = correlator_xt.shape
+    correlator_kw = np.zeros((n_sr,Lx,Ly,N_omega),dtype=complex)
+    temp = np.zeros((n_sr,Lx,Ly,Nt),dtype=complex)
+    for i_sr in range(n_sr):
+        for it in range(Nt):
+            temp[i_sr,:,:,it] = dstn(correlator_xt[i_sr,:,:,it], type=type_dst, norm='ortho')
+        for ix in range(Lx):
+            for iy in range(Ly):
+                correlator_kw[i_sr,ix,iy] = fftshift(fft(temp[i_sr,ix,iy],n=N_omega))
+    return correlator_kw
+
+def fourier_dst2(correlator_xt,N_omega=2000):
+    """
+    Compute the Discrete Sin Transform explicitly using sin functions.
+    In time we always use fft.
+    correlator_xt has shape (n_sr, Lx, Ly, Nt) with n_sr number of stop ratios (10) and Nt number of time steps (400) in the measurement
+    """
+    n_sr, Lx, Ly, Nt = correlator_xt.shape
+    kx = np.pi * np.arange(1, Lx + 1) / (Lx + 1)
+    ky = np.pi * np.arange(1, Ly + 1) / (Ly + 1)
+    X = np.arange(1,Lx+1)
+    Y = np.arange(1,Ly+1)
+    correlator_kw = np.zeros((n_sr,Lx,Ly,N_omega),dtype=complex)
+    temp = np.zeros((n_sr,Lx,Ly,Nt),dtype=complex)
+    for i_sr in range(n_sr):
+        for it in range(Nt):
+            for ikx in range(Lx):
+                for iky in range(Ly):
+                    sin_transf = np.outer(np.sin(kx[ikx]*X),np.sin(ky[iky]*Y))
+                    temp[i_sr,ikx,iky,it] = np.sum(sin_transf*correlator_xt[i_sr,:,:,it])
+        for ix in range(Lx):
+            for iy in range(Ly):
+                correlator_kw[i_sr,ix,iy] = fftshift(fft(temp[i_sr,ix,iy],n=N_omega))
+    return correlator_kw
+
+def fourier_dat(correlator_xt,U_,V_,N_omega=2000):
+    """
+    Compute the Discrete Amazing Transform with the Bogoliubov functions.
+    In time we always use fft.
+    correlator_xt has shape (n_sr, Lx, Ly, Nt) with n_sr number of stop ratios (10) and Nt number of time steps (400) in the measurement
+    U_ and V_ are (Ns,Ns) matrices -> (x,n)
+    """
+    n_sr, Lx, Ly, Nt = correlator_xt.shape
+    Am = np.reshape(U_+V_,shape=(n_sr,Lx,Ly,Lx*Ly))      #matrix (n_sx,x,y,n)
+    correlator_kw = np.zeros((n_sr,Lx,Ly,N_omega),dtype=complex)
+    temp = np.zeros((n_sr,Lx,Ly,Nt),dtype=complex)
+    for i_sr in range(n_sr):
+        k_bog = np.zeros((Lx*Ly,2),dtype=int)
+        for i_n in range(Lx*Ly):
+            k_bog[i_n] = np.array(get_momentum_Bogoliubov(np.real(np.reshape(U_[i_sr,:,i_n],shape=(Lx,Ly)))))
+        for it in range(Nt):
+            for i_n in range(Lx*Ly):
+                temp[i_sr,k_bog[i_n,0],k_bog[i_n,1],it] = np.sum(Am[i_sr,:,:,i_n]*correlator_xt[i_sr,:,:,it])
+        for ix in range(Lx):
+            for iy in range(Ly):
+                correlator_kw[i_sr,ix,iy] = fftshift(fft(temp[i_sr,ix,iy],n=N_omega))
+    return correlator_kw
+
+def sign_changes(v):
+    """
+    Computes how many times the vector changes sign.
+    """
+    indn0 = np.where(np.abs(v)>1e-10)[0]
+    vecn0 = v[indn0]
+    return len(np.where(vecn0[:-1] * vecn0[1:]<0)[0])
+
+def get_momentum_Bogoliubov(U,disp=False):
+    """
+    Here we extract the momentum in x and y direction by extracting the number of times the Bogoliubov function U changes sign.
+    We take one line in x and y direction
+    """
+    Lx,Ly = U.shape
+    if np.sum(np.abs(U))<1e-8:
+        if disp:
+            print("zero mode")
+        return Lx-1,Ly-1
+    ix = Lx//2 # if Lx%2==1 else Lx//2-2
+    iy = Ly//2+2 # if Ly%2==1 else Ly//2-2
+    ly = U[ix,:]        #vector along y at specific x
+    lx = U[:,iy]
+    sxs = [sign_changes(U[:,i]) for i in range(Ly)]
+    sys = [sign_changes(U[i,:]) for i in range(Lx)]
+    sx, _ = Counter(sxs).most_common(1)[0]
+    sy, _ = Counter(sys).most_common(1)[0]
+    return [sx,sy]
+    if disp:
+        print("sx:",sxs)
+        print("sy:",sys)
+        X,Y = np.meshgrid(np.arange(Lx),np.arange(Ly))
+        fig=plt.figure()
+        ax = fig.add_subplot(projection='3d')
+        ax.plot_surface(X,Y,U.T,cmap='plasma')
+        plt.show()
+
+class SqrtNorm(mcolors.Normalize):
+    def __call__(self, value, clip=None):
+        return (super().__call__(value, clip))**(1/2) #np.sqrt(super().__call__(value, clip))
+
+def plot(correlator_kw, **kwargs):
+    """
+    Plot frequency over mod k for the different stop ratios.
+    correlator_kw has shape (n_sr, Lx, Ly, Nomega) with n_sr number of stop ratios (10) and Nomega number of frequency stps (2000)
+    """
+    n_sr,Lx,Ly,N_omega = correlator_kw.shape
+
+    # Momenta
+    if kwargs['fourier_type'] in ['fft',]:
+        kx = fftshift(fftfreq(Lx,d=1)*2*np.pi)
+        ky = fftshift(fftfreq(Ly,d=1)*2*np.pi)
+    elif kwargs['fourier_type'] in ['dst','dst2','dat']:
+        kx = np.pi * np.arange(1, Lx + 1) / (Lx + 1)
+        ky = np.pi * np.arange(1, Ly + 1) / (Ly + 1)
+
+    KX, KY = np.meshgrid(kx, ky, indexing='ij')
+    K_mag = np.sqrt(KX**2 + KY**2)
+    freqs = fftshift(fftfreq(N_omega,0.8/400))
+
+    K_flat = K_mag.ravel()
+    # Define k bins
+    if 'n_bins' in kwargs.keys():
+        num_k_bins = kwargs['n_bins']
+    else:
+        num_k_bins = 100
+    k_bins = np.linspace(0,np.sqrt(2)*np.pi, num_k_bins + 1)
+    k_centers = 0.5 * (k_bins[:-1] + k_bins[1:])
+    #
+    K_mesh, W_mesh = np.meshgrid(k_centers, freqs, indexing='ij')
+    # Figure
+    fig = plt.figure(figsize=(20.8,8))
+    if 'title' in kwargs.keys():
+        plt.suptitle(kwargs['title'],fontsize=20)
+    if 'fourier_type' in kwargs.keys():
+        cbar_label = kwargs['fourier_type']
+    else:
+        cbar_label = ''
+    P_k_omega_sr = np.zeros((n_sr,num_k_bins,N_omega))
+    for i_sr in range(n_sr):
+        corr_flat = correlator_kw[i_sr].reshape(Lx*Ly, N_omega)
+        for i in range(num_k_bins):
+            mask = (K_flat >= k_bins[i]) & (K_flat < k_bins[i+1])
+            if np.any(mask):
+                P_k_omega_sr[i_sr, i, :] = np.mean(np.abs(corr_flat[mask, :]), axis=0)
+    vmax = np.max(P_k_omega_sr)
+    for i_sr in range(n_sr):     # Plotting
+        vmax = np.max(P_k_omega_sr[i_sr])
+        P_k_omega = P_k_omega_sr[i_sr]
+        ax = fig.add_subplot(2,5,i_sr+1)
+        ax.set_facecolor('black')
+        mesh = ax.pcolormesh(K_mesh, W_mesh, P_k_omega,
+                             shading='auto',
+                             cmap='inferno',
+                             norm=SqrtNorm(vmin=0,vmax=vmax)
+                            )
+        ax.set_ylim(-70,70)
+        ax.set_xlim(0,np.sqrt(2)*np.pi)
+        #plt.title("Spectral power in $|k|$ vs $\\omega$")
+        cbar = fig.colorbar(mesh, ax=ax)
+        if i_sr in [4,9]:
+            cbar.set_label(cbar_label,fontsize=15)
+        if i_sr in [0,5]:
+            ax.set_ylabel(r'$\omega$',fontsize=15)
+        if i_sr in [5,6,7,8,9]:
+            ax.set_xlabel(r'$|k|$',fontsize=15)
+    #
+    plt.subplots_adjust(wspace=0.112, hspace=0.116, left=0.035, right=0.982, bottom=0.076, top=0.94)
+
+    if 'figname' in kwargs.keys():
+        plt.savefig(kwargs['figname'])
+    if 'showfig' in kwargs.keys():
+        if kwargs['showfig']:
+            plt.show()
 
 
 def plot_gridBZ(ax,UC):
@@ -442,100 +718,6 @@ def plot_opposite_BZ(k,mk,UC):
     ax.scatter(mk[0],mk[1],c='b')
     plt.show()
 
-def get_pars_fn(names,pars):
-    J1,J2,D1,D2,Lx,Ly,S,H_i,H_f,n_H = pars
-    dirname,filename,extension = names
-    fn = dirname+filename+'_'
-    for i in pars:
-        if type(i) is float or type(i) is np.float64:
-            fn += "{:.4f}".format(i).replace('.',',')
-        elif type(i) is int:
-            fn += str(i)
-        elif type(i) is str:
-            fn += i
-        if not i==pars[-1]:
-            fn += '_'
-    fn += extension
-    return fn
-
-def plot_corr(corr):
-    """Code from Johannes.
-    Takes the i,j,t matrix of correlators, computes the Fourier transform and then plots it.
-    corr has dimension [n_stop_ratio,Lx,Ly,Nt].
-    """
-    n_sr,Lx,Ly,Nt = corr.shape
-    N_omega = 2000      #default from Jeronimo
-    omega_list = np.linspace(-250,250,N_omega)
-    #momenta for plotting
-    kx_list = np.fft.fftshift(np.fft.fftfreq(Lx,d=1))
-    ky_list = np.fft.fftshift(np.fft.fftfreq(Ly,d=1))
-    ks = []     #mod k
-    ks_m = []   #mod_k +- 0.01
-    for kx in kx_list:
-        for ky in ky_list:
-            ks.append(np.sqrt(kx**2+ky**2))
-            ks_m.append([np.sqrt(kx**2+ky**2)-0.01, np.sqrt(kx**2+ky**2)+0.01])
-    ks = np.array(ks)
-    k_inds = np.argsort(ks)
-    ks_m = np.array(ks_m)[k_inds]   #ordered
-    vals, idx = np.unique(ks[k_inds], return_index=True)    #take only unique |k| points
-    idx = np.append(idx, len(ks))
-    #Uniform backgound
-    omega_mesh = np.linspace(-250.250125063,250.250125063,2001)
-    bla_x = np.linspace(0.,ks_m[-1][1],2)       #specific of Lx=7,Ly=6
-    bla_y = np.linspace(-250.250125063,250.250125063,2)
-    X0, Y0 = np.meshgrid(bla_x, bla_y)
-    #
-    fig = plt.figure(figsize=(20.8,8))
-    for p in range(n_sr):
-        ax = fig.add_subplot(2,5,p+1)        #default 10 stop ratios
-        a = corr[p] # insert matrix for stop ratio of shape (x,y,Nt), here (6,7,401)
-        #Fourier transform x,y->kx,ky with fft2 for each time t
-        ks_ts = np.zeros((Lx,Ly,Nt), dtype=complex)
-        for t in range(Nt):
-            ks_ts[:,:,t] =  np.fft.fftshift(np.fft.fft2(a[:,:,t]))
-        #Fourier transform t->Omega and flatten kx,ky
-        ks_ws_flat = np.zeros((Lx*Ly,N_omega), dtype=complex)
-        for kx in range(Lx):
-            for ky in range(Ly):
-                ind = ky + Ly*kx
-                ks_ws_flat[ind,:] = np.fft.fftshift(np.fft.fft(ks_ts[kx,ky,:], n=N_omega))
-        #Take absolute value and order like the absolute values of momenta
-        ks_ws_flat = np.abs(ks_ws_flat[k_inds,:])
-        #Sum values of Fourier transform in the same |k| interval
-        ks_ws_plot = []
-        ks_m_plot  = []
-        for i in range(len(vals)):
-            val_c  = np.sum(ks_ws_flat[idx[i]:idx[i+1],:], axis=0)/(idx[i+1]-idx[i])
-#            print(i,idx[i],idx[i+1],ks_m[i])
-            ks_ws_plot.append(val_c)
-            ks_m_plot.append(ks_m[idx[i]])
-#            input()
-        vma = np.amax(ks_ws_plot)
-        #Plot 0 background
-        ax.pcolormesh(X0, Y0, np.zeros((1,1)), cmap='magma', vmin=0, vmax=vma)
-
-        ks_ws_plot.reverse()    ###################################################
-
-        #Plot single columns
-        sm = ScalarMappable(cmap='magma',norm=Normalize(vmin=0,vmax=vma))
-        sm.set_array([])
-        for i in range(len(vals)):
-            X, Y = np.meshgrid(np.array(ks_m_plot[i]), omega_mesh)
-            ax.pcolormesh(X, Y, ks_ws_plot[i].reshape((1,N_omega)).T, cmap='magma', vmin=0, vmax=vma)
-        plt.colorbar(sm,ax=ax,label='FFT (a.u.)')
-        ax.set_ylim(-70,70)
-        if p > 4:
-            ax.set_xlabel('$|k|$')
-        if p%5 == 0:
-            ax.set_ylabel('$\\omega$')
-        #plt.gca().invert_xaxis()
-        ax.set_title('Stop ratio :$'+"{:.1f}".format(0.1*(p+1))+'$')
-    plt.tight_layout()
-
-    plt.subplots_adjust(wspace=0.2, hspace=0.3, left=0.04, right=0.97)
-
-    plt.show()
 
 def extract_experimental_parameters(fn):
     """Import experimental Hamiltonian parameters"""
@@ -579,14 +761,22 @@ def extract_experimental_parameters(fn):
         g2[ind_a,ind_b] = g2[ind_b,ind_a] = data['xix'][keys[i]]*1000     #MHz
     return Lx,Ly,g1,g2,d1,h
 
-def get_Hamiltonian_parameters(time_steps,g1_in,g2_in,d1_in,h_in,g1_fin,g2_fin,d1_fin,h_fin):
-    """Compute g1(t), g2(t), d1(t) and h(t) for each time and site of the ramp."""
-    t_values = np.linspace(0,1,time_steps).reshape(time_steps,1,1)
-    g1_t_i = (1-t_values)*g1_in + t_values*g1_fin
-    g2_t_i = (1-t_values)*g2_in + t_values*g2_fin
-    d1_t_i = (1-t_values)*d1_in + t_values*d1_fin
-    h_t_i = (1-t_values)*h_in + t_values*h_fin
-    return g1_t_i,g2_t_i,d1_t_i,h_t_i
+def get_fn(*args):
+    """
+    Get filename for set of parameters.
+    """
+    fn = ''
+    for i,a in enumerate(args):
+        t = type(a)
+        if t in [str,]:
+            fn += a
+        elif t in [int, np.int64]:
+            fn += str(a)
+        elif t in [float, np.float32, np.float64]:
+            fn += "{:.7f}".format(a)
+        if not i==len(args)-1:
+            fn +='_'
+    return fn
 
 ######################################################################################################
 #       QUENCH FUNCTIONS
@@ -663,77 +853,3 @@ def initial_condition(h_i,Lx,Ly):
 
 
 
-
-
-
-
-
-
-def old_correlator_zz(S,Lx,Ly,ts,site0,ind_i,ind_j,A,B,G,H):
-    """Compute real space <[Z_i,Z_j]> correlator as in notes."""
-    ts_i = ts[(site0+ind_i//Ly+ind_i%Ly)%2]
-    t_zz_i = ts_i[0][2]
-    t_xz_i = ts_i[1][2]
-    t_yz_i = ts_i[2][2]
-    ts_j = ts[(site0+ind_j//Ly+ind_j%Ly)%2]
-    t_zz_j = ts_j[0][2]
-    t_xz_j = ts_j[1][2]
-    t_yz_j = ts_j[2][2]
-    A = A[ind_i,ind_j]
-    B = B[ind_i,ind_j]
-    G = G[ind_i,ind_j]
-    H = H[ind_i,ind_j]
-    ff2 = 1
-    ff4 = 1
-    return 2*1j*( t_zz_i*t_zz_j*np.imag(G*H+A*B)*ff4
-                 + S/2*( (t_xz_i*t_xz_j)*np.imag(G+H+A+B)
-                        +(t_yz_i*t_yz_j)*np.imag(G+H-A-B) )*ff2
-                )
-
-
-def old_correlator_ze(S,Lx,Ly,ts,site0,ind_i,ind_j,A,B,G,H):
-    """Compute real space <[Z_i,E_j]> correlator as in notes.
-    Site j is where the E perturbation is applied -> we assume it is somewhere in the middle which has all 4 nearest neighbors and average over them.
-    """
-    ts_i = ts[(site0+ind_i//Ly+ind_i%Ly)%2]
-    ts_j = ts[(site0+ind_j//Ly+ind_j%Ly)%2]
-    ZE = np.zeros(A[0,0].shape,dtype=complex)
-    ff2 = 1
-    ff4 = 1
-    ff6 = 1
-    for ind_l in [ind_j-1,ind_j+1,ind_j-Ly,ind_j+Ly]:   #Loop over 4 nearest neighbors of j
-        ts_l = ts[(site0+ind_l//Ly+ind_l%Ly)%2]
-        #ZXX
-        ZE += ts_i[0][2]*ts_j[1][0]*ts_l[1][0]*S/2*(
-            (A[ind_j,ind_l,0]+B[ind_j,ind_l,0]+G[ind_j,ind_l,0]+H[ind_j,ind_l,0])*(S*ff2-G[ind_i,ind_i,0]*ff4)
-            - ((B[ind_i,ind_l]+H[ind_i,ind_l])*(G[ind_i,ind_j]+A[ind_i,ind_j])+(B[ind_i,ind_j]+H[ind_i,ind_j])*(G[ind_i,ind_l]+A[ind_i,ind_l]))*ff4
-        )
-        #ZYY
-        ZE += ts_i[0][2]*ts_j[2][1]*ts_l[2][1]*S/2*(
-            (-A[ind_j,ind_l,0]-B[ind_j,ind_l,0]+G[ind_j,ind_l,0]+H[ind_j,ind_l,0])*(S*ff2-G[ind_i,ind_i,0]*ff4)
-            - ((-B[ind_i,ind_l]+H[ind_i,ind_l])*(G[ind_i,ind_j]-A[ind_i,ind_j])+(-B[ind_i,ind_j]+H[ind_i,ind_j])*(G[ind_i,ind_l]-A[ind_i,ind_l]))*ff4
-        )
-        #XZX
-        ZE += ts_i[1][2]*ts_j[0][0]*ts_l[1][0]*S/2*(
-            (A[ind_i,ind_l]+B[ind_i,ind_l]+G[ind_i,ind_l]+H[ind_i,ind_l])*(S*ff2-G[ind_j,ind_j,0]*ff4)
-            - ((H[ind_i,ind_j]+A[ind_i,ind_j])*(B[ind_j,ind_l,0]+H[ind_j,ind_l,0])+(G[ind_i,ind_j]+B[ind_i,ind_j])*(G[ind_j,ind_l,0]+A[ind_j,ind_l,0]))*ff4
-        )
-        #XXZ
-        ZE += ts_i[1][2]*ts_j[1][0]*ts_l[0][0]*S/2*(
-            (A[ind_i,ind_j]+B[ind_i,ind_j]+G[ind_i,ind_j]+H[ind_i,ind_j])*(S*ff2-G[ind_l,ind_l,0]*ff4)
-            - ((H[ind_i,ind_l]+A[ind_i,ind_l])*(B[ind_j,ind_l,0]+G[ind_j,ind_l,0])+(G[ind_i,ind_l]+B[ind_i,ind_l])*(H[ind_j,ind_l,0]+A[ind_j,ind_l,0]))*ff4
-        )
-        #ZZZ
-        ZE += ts_i[0][2]*ts_j[0][0]*ts_l[0][0]*(
-            S**3 - S**2*(G[ind_i,ind_i,0]+G[ind_j,ind_j,0]+G[ind_l,ind_l,0])*ff2
-            + S*(G[ind_i,ind_i,0]*G[ind_j,ind_j,0]+G[ind_i,ind_i,0]*G[ind_l,ind_l,0]+G[ind_j,ind_j,0]*G[ind_l,ind_l,0]
-                +A[ind_i,ind_j]*B[ind_i,ind_j]+A[ind_i,ind_l]*B[ind_i,ind_l]+A[ind_j,ind_l,0]*B[ind_j,ind_l,0]
-                +G[ind_i,ind_j]*H[ind_i,ind_j]+G[ind_i,ind_l]*H[ind_i,ind_l]+G[ind_j,ind_l,0]*H[ind_j,ind_l,0]     )*ff4
-            - (G[ind_i,ind_i,0]*(G[ind_j,ind_j,0]*G[ind_l,ind_l,0]+A[ind_j,ind_l,0]*B[ind_j,ind_l,0]+G[ind_j,ind_l,0]*H[ind_j,ind_l,0])
-              +A[ind_i,ind_j]*(B[ind_i,ind_j]*G[ind_l,ind_l,0]+H[ind_i,ind_l]*B[ind_j,ind_l,0]+B[ind_i,ind_l]*H[ind_j,ind_l,0])
-              +A[ind_i,ind_l]*(H[ind_i,ind_j]*B[ind_j,ind_l,0]+B[ind_i,ind_j]*G[ind_j,ind_l,0]+B[ind_i,ind_l]*G[ind_j,ind_j,0])
-              +G[ind_i,ind_j]*(H[ind_i,ind_j]*G[ind_l,ind_l,0]+H[ind_i,ind_l]*G[ind_j,ind_l,0]+B[ind_i,ind_l]*A[ind_j,ind_l,0])
-              +G[ind_i,ind_l]*(H[ind_i,ind_j]*H[ind_j,ind_l,0]+B[ind_i,ind_j]*A[ind_j,ind_l,0]+H[ind_i,ind_l]*G[ind_j,ind_j,0])
-              )*ff6
-        )
-    return 1j/2*np.imag(ZE)
