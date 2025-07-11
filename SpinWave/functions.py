@@ -4,7 +4,7 @@ from matplotlib.cm import ScalarMappable
 import matplotlib.colors as mcolors
 from matplotlib.colors import Normalize, LogNorm
 import pickle
-from scipy.fft import fftfreq, fftshift, fft, fft2, dstn
+from scipy.fft import fftfreq, fftshift, fft, fft2, dstn, dctn
 from collections import Counter     #for Bogoliubov momentum
 
 def get_ts(theta,phi):
@@ -45,6 +45,7 @@ def get_N_11(*pars):
     for i in range(2):
         result += S*(Gamma[i]*(p_xx[i]+p_yy[i])/2-2*p_zz[i])
     return result
+
 def get_N_12(*pars):
     """Compute N_12 as in notes."""
     S,Gamma,h,ts,theta,phi,J,D = pars
@@ -272,7 +273,7 @@ def correlator_ee(S,Lx,Ly,ts,site0,ind_i,ind_j,A,B,G,H,exclude_list=[]):
     ts_j = ts[(site0+ind_j//Ly+ind_j%Ly)%2]
     EE = np.zeros(A[0,0].shape,dtype=complex)
     ind_nn_i = get_nn(ind_i,Lx,Ly)
-    ind_nn_j = [ind_j,]
+    ind_nn_j = [ind_j+Ly,]
 #    ind_nn_j = get_nn(ind_j,Lx,Ly)
     for ind_r in ind_nn_i:
         ts_r = ts[(site0+ind_r//Ly+ind_r%Ly)%2]
@@ -293,6 +294,62 @@ def correlator_ee(S,Lx,Ly,ts,site0,ind_i,ind_j,A,B,G,H,exclude_list=[]):
                     contraction = compute_contraction(t[1],t[2],t[3],A,B,G,H,exclude_list)
                     EE += coeff_t * t[0] * contraction
     return 2*1j/len(ind_nn_i)/len(ind_nn_j)*np.imag(EE)
+
+def correlator_jj(S,Lx,Ly,ts,site0,ind_i,ind_j,A,B,G,H,exclude_list=[]):
+    """
+    Compute real space <[J_i(t),J_j(0)]> correlator.
+    Site j is where the J perturbation is applied -> we assume it is
+    somewhere in the middle which has all 4 nearest neighbors and average
+    over them.
+    """
+    ts_i = ts[(site0+ind_i//Ly+ind_i%Ly)%2]
+    ts_j = ts[(site0+ind_j//Ly+ind_j%Ly)%2]
+    JJ = np.zeros(A[0,0].shape,dtype=complex)
+    ind_nn_i = get_nn(ind_i,Lx,Ly)
+    ind_nn_j = [ind_j+Ly,]
+#    ind_nn_j = get_nn(ind_j,Lx,Ly)
+    term_list = ['XYXY','ZYZY','XYYX','ZYYZ','YXXY','YZZY','YXYX','YZYZ']
+    for ind_r in ind_nn_i:
+        ts_r = ts[(site0+ind_r//Ly+ind_r%Ly)%2]
+        for ind_s in ind_nn_j:
+            ts_s = ts[(site0+ind_s//Ly+ind_s%Ly)%2]
+            ts_list = [ts_i,ts_r,ts_j,ts_s]
+            for i,ops in enumerate(term_list):
+                original_op = ops if i%2==0 else term_list[i-1]
+                list_terms = compute_combinations(ops,[ind_i,ind_r,ind_j,ind_s],'tt00',S)
+                coeff_t = compute_coeff_t(ops,original_op,ts_list)
+                if i in [2,3,4,5]:
+                    coeff_t *= -1
+                for t in list_terms:
+                    contraction = compute_contraction(t[1],t[2],t[3],A,B,G,H,exclude_list)
+                    JJ += coeff_t * t[0] * contraction
+    return 2*1j/len(ind_nn_i)/len(ind_nn_j)*np.imag(JJ)
+
+def correlator_jj_bond(S,Lx,Ly,ts,site0,ind_i,ind_j,A,B,G,H,orientation,exclude_list=[]):
+    """
+    Compute real space <[J_i(t),J_j(0)]> correlator for a specific pair of bonds.
+    Applied bond is horizontal from ind_j: ind_j->ind_j+Ly.
+    Measurement bond is specified by ind_i and orientation: h or v (right or up).
+    """
+    ts_i = ts[(site0+ind_i//Ly+ind_i%Ly)%2]
+    ts_j = ts[(site0+ind_j//Ly+ind_j%Ly)%2]
+    JJ = np.zeros(A[0,0].shape,dtype=complex)
+    ind_r = ind_i+1 if orientation=='v' else ind_i+Ly
+    ind_s = ind_j+Ly #always horizontal
+    term_list = ['XYXY','ZYZY','XYYX','ZYYZ','YXXY','YZZY','YXYX','YZYZ']
+    ts_r = ts[(site0+ind_r//Ly+ind_r%Ly)%2]
+    ts_s = ts[(site0+ind_s//Ly+ind_s%Ly)%2]
+    ts_list = [ts_i,ts_r,ts_j,ts_s]
+    for i,ops in enumerate(term_list):
+        original_op = ops if i%2==0 else term_list[i-1]
+        list_terms = compute_combinations(ops,[ind_i,ind_r,ind_j,ind_s],'tt00',S)
+        coeff_t = compute_coeff_t(ops,original_op,ts_list)
+        if i in [2,3,4,5]:
+            coeff_t *= -1
+        for t in list_terms:
+            contraction = compute_contraction(t[1],t[2],t[3],A,B,G,H,exclude_list)
+            JJ += coeff_t * t[0] * contraction
+    return 2*1j*np.imag(JJ)
 
 def generate_pairings(elements):
     """
@@ -401,7 +458,7 @@ def get_nn(ind,Lx,Ly):
         result.append(ind-1)
     return result
 
-get_correlator = {'zz':correlator_zz,'xx':correlator_xx,'ze':correlator_ze,'ez':correlator_ez, 'ee':correlator_ee}
+get_correlator = {'zz':correlator_zz,'xx':correlator_xx,'ze':correlator_ze,'ez':correlator_ez, 'ee':correlator_ee, 'jj':correlator_jj}
 
 def get_parameters(use_experimental_parameters,Lx,Ly,time_steps,g_val,h_val):
     """
@@ -493,51 +550,46 @@ def fourier_dst(correlator_xt,N_omega=2000,type_dst=1):
                 correlator_kw[i_sr,ix,iy] = fftshift(fft(temp[i_sr,ix,iy],n=N_omega))
     return correlator_kw
 
-def fourier_dst2(correlator_xt,N_omega=2000):
+def fourier_dct(correlator_xt,N_omega=2000,type_dst=2):
     """
-    Compute the Discrete Sin Transform explicitly using sin functions.
+    Compute the Discrete Sin Transform since we have open BC.
     In time we always use fft.
     correlator_xt has shape (n_sr, Lx, Ly, Nt) with n_sr number of stop ratios (10) and Nt number of time steps (400) in the measurement
     """
     n_sr, Lx, Ly, Nt = correlator_xt.shape
-    kx = np.pi * np.arange(1, Lx + 1) / (Lx + 1)
-    ky = np.pi * np.arange(1, Ly + 1) / (Ly + 1)
-    X = np.arange(1,Lx+1)
-    Y = np.arange(1,Ly+1)
     correlator_kw = np.zeros((n_sr,Lx,Ly,N_omega),dtype=complex)
     temp = np.zeros((n_sr,Lx,Ly,Nt),dtype=complex)
     for i_sr in range(n_sr):
         for it in range(Nt):
-            for ikx in range(Lx):
-                for iky in range(Ly):
-                    sin_transf = np.outer(np.sin(kx[ikx]*X),np.sin(ky[iky]*Y))
-                    temp[i_sr,ikx,iky,it] = np.sum(sin_transf*correlator_xt[i_sr,:,:,it])
+            temp[i_sr,:,:,it] = dctn(correlator_xt[i_sr,:,:,it], type=type_dst, norm='ortho')
         for ix in range(Lx):
             for iy in range(Ly):
                 correlator_kw[i_sr,ix,iy] = fftshift(fft(temp[i_sr,ix,iy],n=N_omega))
     return correlator_kw
 
-def fourier_dat(correlator_xt,U_,V_,N_omega=2000):
+def fourier_dat(correlator_xt,U_,V_,ind_j,N_omega=2000):
     """
     Compute the Discrete Amazing Transform with the Bogoliubov functions.
     In time we always use fft.
-    correlator_xt has shape (n_sr, Lx, Ly, Nt) with n_sr number of stop ratios (10) and Nt number of time steps (400) in the measurement
-    U_ and V_ are (Ns,Ns) matrices -> (x,n)
+    correlator_xt has shape (n_sr, Lx, Ly, Nt) with n_sr number of stop ratios (10) and Nt number of time steps (401) in the measurement
+    U_ and V_ are (n_sr,Ns,Ns) matrices -> (x,m)
     """
-    n_sr, Lx, Ly, Nt = correlator_xt.shape
-    Am = np.reshape(U_+V_,shape=(n_sr,Lx,Ly,Lx*Ly))      #matrix (n_sx,x,y,n)
+    n_sr, Lx, Ly, Ntimes = correlator_xt.shape
+    Ns = Lx*Ly
+    correlator_xt = correlator_xt.reshape(n_sr,Ns,Ntimes)
+    correlator_kt = np.zeros((n_sr,Lx,Ly,Ntimes),dtype=complex)
     correlator_kw = np.zeros((n_sr,Lx,Ly,N_omega),dtype=complex)
-    temp = np.zeros((n_sr,Lx,Ly,Nt),dtype=complex)
     for i_sr in range(n_sr):
-        k_bog = np.zeros((Lx*Ly,2),dtype=int)
-        for i_n in range(Lx*Ly):
-            k_bog[i_n] = np.array(get_momentum_Bogoliubov(np.real(np.reshape(U_[i_sr,:,i_n],shape=(Lx,Ly)))))
-        for it in range(Nt):
-            for i_n in range(Lx*Ly):
-                temp[i_sr,k_bog[i_n,0],k_bog[i_n,1],it] = np.sum(Am[i_sr,:,:,i_n]*correlator_xt[i_sr,:,:,it])
-        for ix in range(Lx):
-            for iy in range(Ly):
-                correlator_kw[i_sr,ix,iy] = fftshift(fft(temp[i_sr,ix,iy],n=N_omega))
+        A_ik = np.real(U_[i_sr] - V_[i_sr])
+        B_ik = np.real(U_[i_sr] + V_[i_sr])
+        Bj_k = B_ik[ind_j]
+        phi_ik = A_ik #/ Bj_k[None,:]
+        for ind in range(Ns):
+            phi_ik[ind,:] *= 2/np.pi*(-1)**(ind//Ly+ind%Ly+1)
+        for k in range(Ns):
+            kx,ky = get_momentum_Bogoliubov2(phi_ik[:,k].reshape(Lx,Ly))
+            correlator_kt[i_sr,kx,ky] = np.sum(phi_ik[:,k,None]*correlator_xt[i_sr,:,:],axis=0)
+            correlator_kw[i_sr,kx,ky] = fftshift(fft(correlator_kt[i_sr,kx,ky],n=N_omega))
     return correlator_kw
 
 def sign_changes(v):
@@ -547,6 +599,17 @@ def sign_changes(v):
     indn0 = np.where(np.abs(v)>1e-10)[0]
     vecn0 = v[indn0]
     return len(np.where(vecn0[:-1] * vecn0[1:]<0)[0])
+
+def get_momentum_Bogoliubov2(f_in,type_dct=2):
+    """
+    Compute the peak of the dstn of input function to extract the momentum.
+    f_in has shape (Lx,Ly)
+    """
+    Lx,Ly = f_in.shape
+    ps = dctn(f_in,type=type_dct)
+    ind = np.argmax(np.absolute(ps))
+    kx,ky = ind//Ly, ind%Ly
+    return kx,ky
 
 def get_momentum_Bogoliubov(U,disp=False):
     """
@@ -566,19 +629,20 @@ def get_momentum_Bogoliubov(U,disp=False):
     sys = [sign_changes(U[i,:]) for i in range(Lx)]
     sx, _ = Counter(sxs).most_common(1)[0]
     sy, _ = Counter(sys).most_common(1)[0]
-    return [sx,sy]
     if disp:
         print("sx:",sxs)
         print("sy:",sys)
-        X,Y = np.meshgrid(np.arange(Lx),np.arange(Ly))
-        fig=plt.figure()
-        ax = fig.add_subplot(projection='3d')
-        ax.plot_surface(X,Y,U.T,cmap='plasma')
-        plt.show()
+        if 0:   #plot U
+            X,Y = np.meshgrid(np.arange(Lx),np.arange(Ly))
+            fig=plt.figure()
+            ax = fig.add_subplot(projection='3d')
+            ax.plot_surface(X,Y,U.T,cmap='plasma')
+            plt.show()
+    return [sx,sy]
 
 class SqrtNorm(mcolors.Normalize):
     def __call__(self, value, clip=None):
-        return (super().__call__(value, clip))**(1/2) #np.sqrt(super().__call__(value, clip))
+        return (super().__call__(value, clip))**(1/2)
 
 def plot(correlator_kw, **kwargs):
     """
@@ -591,9 +655,12 @@ def plot(correlator_kw, **kwargs):
     if kwargs['fourier_type'] in ['fft',]:
         kx = fftshift(fftfreq(Lx,d=1)*2*np.pi)
         ky = fftshift(fftfreq(Ly,d=1)*2*np.pi)
-    elif kwargs['fourier_type'] in ['dst','dst2','dat']:
+    elif kwargs['fourier_type'] in ['dst']:
         kx = np.pi * np.arange(1, Lx + 1) / (Lx + 1)
         ky = np.pi * np.arange(1, Ly + 1) / (Ly + 1)
+    elif kwargs['fourier_type'] in ['dct','dat']:
+        kx = np.pi * np.arange(0, Lx ) / (Lx )
+        ky = np.pi * np.arange(0, Ly ) / (Ly )
 
     KX, KY = np.meshgrid(kx, ky, indexing='ij')
     K_mag = np.sqrt(KX**2 + KY**2)
@@ -610,7 +677,8 @@ def plot(correlator_kw, **kwargs):
     #
     K_mesh, W_mesh = np.meshgrid(k_centers, freqs, indexing='ij')
     # Figure
-    fig = plt.figure(figsize=(20.8,8))
+    #fig = plt.figure(figsize=(20.8,8))
+    fig = plt.figure(figsize=(8,8))
     if 'title' in kwargs.keys():
         plt.suptitle(kwargs['title'],fontsize=20)
     if 'fourier_type' in kwargs.keys():
@@ -625,10 +693,11 @@ def plot(correlator_kw, **kwargs):
             if np.any(mask):
                 P_k_omega_sr[i_sr, i, :] = np.mean(np.abs(corr_flat[mask, :]), axis=0)
     vmax = np.max(P_k_omega_sr)
-    for i_sr in range(n_sr):     # Plotting
+    for i_sr in range(9,n_sr):     # Plotting
         vmax = np.max(P_k_omega_sr[i_sr])
         P_k_omega = P_k_omega_sr[i_sr]
-        ax = fig.add_subplot(2,5,i_sr+1)
+        #ax = fig.add_subplot(2,5,i_sr+1)
+        ax = fig.add_subplot()
         ax.set_facecolor('black')
         mesh = ax.pcolormesh(K_mesh, W_mesh, P_k_omega,
                              shading='auto',
@@ -839,7 +908,33 @@ def initial_condition(h_i,Lx,Ly):
 
 
 
+####################################################################
+# OLD FUNCTIONS
+####################################################################
 
+def fourier_dst2(correlator_xt,N_omega=2000):
+    """
+    Compute the Discrete Sin Transform explicitly using sin functions.
+    In time we always use fft.
+    correlator_xt has shape (n_sr, Lx, Ly, Nt) with n_sr number of stop ratios (10) and Nt number of time steps (400) in the measurement
+    """
+    n_sr, Lx, Ly, Nt = correlator_xt.shape
+    kx = np.pi * np.arange(1, Lx + 1) / (Lx + 1)
+    ky = np.pi * np.arange(1, Ly + 1) / (Ly + 1)
+    X = np.arange(1,Lx+1)
+    Y = np.arange(1,Ly+1)
+    correlator_kw = np.zeros((n_sr,Lx,Ly,N_omega),dtype=complex)
+    temp = np.zeros((n_sr,Lx,Ly,Nt),dtype=complex)
+    for i_sr in range(n_sr):
+        for it in range(Nt):
+            for ikx in range(Lx):
+                for iky in range(Ly):
+                    sin_transf = np.outer(np.sin(kx[ikx]*X),np.sin(ky[iky]*Y))
+                    temp[i_sr,ikx,iky,it] = np.sum(sin_transf*correlator_xt[i_sr,:,:,it])
+        for ix in range(Lx):
+            for iy in range(Ly):
+                correlator_kw[i_sr,ix,iy] = fftshift(fft(temp[i_sr,ix,iy],n=N_omega))
+    return correlator_kw
 
 
 
